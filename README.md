@@ -90,6 +90,20 @@ layra render docs/*.mmd --check         # CI gate: exit 1 on any parse issue
 layra render d.mmd --icons mdi.json     # extra Iconify packs
 ```
 
+**npm** (Node ≥18 / bundlers / browser):
+
+```bash
+npm install @vietgs03/layra
+```
+
+```js
+import { render } from "@vietgs03/layra";
+const svg = await render("flowchart LR\n  a --> b");
+```
+
+**VS Code**: `packages/vscode` — live preview for `.mmd` files and markdown
+mermaid fences (`vsce package` to build the vsix).
+
 **Library**:
 
 ```bash

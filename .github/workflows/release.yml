@@ -84,6 +84,16 @@ jobs:
       - name: Smoke test
         run: node packages/core/test/smoke.mjs
 
+      - name: Build VS Code extension
+        run: |
+          packages/vscode/build.sh
+          cd packages/vscode && npx --yes @vscode/vsce package --no-dependencies
+
+      - name: Attach vsix to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: packages/vscode/*.vsix
+
       - name: Publish to npm (when NPM_TOKEN is configured)
         working-directory: packages/core
         run: |

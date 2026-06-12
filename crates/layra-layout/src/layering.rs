@@ -1,7 +1,7 @@
 //! Phase 1–3: cycle breaking, layer assignment, virtual-node insertion.
 
 use crate::LayoutGraph;
-use layra_core::Graph;
+use layra_core::{Direction, Graph};
 
 /// Build the working graph and break cycles with a DFS: any edge that closes
 /// a cycle (back edge) is reversed for layout purposes only.
@@ -51,10 +51,19 @@ pub(crate) fn build(graph: &Graph) -> LayoutGraph {
         }
     }
 
+    // Sizes live in abstract (cross, main) space: for horizontal layouts the
+    // main axis is x, so width/height swap. `position::apply` maps back.
+    let horizontal = matches!(graph.direction, Direction::LeftRight | Direction::RightLeft);
     let sizes = graph
         .nodes
         .iter()
-        .map(|nd| (nd.size.width, nd.size.height))
+        .map(|nd| {
+            if horizontal {
+                (nd.size.height, nd.size.width)
+            } else {
+                (nd.size.width, nd.size.height)
+            }
+        })
         .collect();
 
     LayoutGraph {

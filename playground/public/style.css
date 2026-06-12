@@ -1,0 +1,87 @@
+:root {
+  --bg: #ffffff;
+  --panel: #f7f8fa;
+  --border: #e2e6ec;
+  --text: #1a1d23;
+  --dim: #6b7280;
+  --accent: #3b82f6;
+  --error: #dc2626;
+  --ok: #059669;
+}
+:root.dark {
+  --bg: #0f1115;
+  --panel: #171a21;
+  --border: #2d3340;
+  --text: #e5e9f0;
+  --dim: #9ca3af;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  display: flex;
+  flex-direction: column;
+  font-family: Inter, 'Helvetica Neue', Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  flex: none;
+}
+.brand { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+.logo { color: var(--accent); }
+.tag { color: var(--dim); font-size: 12.5px; margin-left: 8px; }
+#perf { font-variant-numeric: tabular-nums; }
+
+.actions { display: flex; gap: 8px; }
+button {
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+}
+button:hover { border-color: var(--accent); }
+
+main { display: flex; flex: 1; min-height: 0; }
+
+.pane { flex: 1; min-width: 0; position: relative; }
+.editor-pane { border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+
+#editor {
+  flex: 1;
+  width: 100%;
+  border: 0;
+  resize: none;
+  outline: none;
+  padding: 16px;
+  font: 13.5px/1.55 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+  background: var(--bg);
+  color: var(--text);
+  tab-size: 2;
+  white-space: pre;
+}
+
+.status {
+  flex: none;
+  padding: 6px 16px;
+  font-size: 12.5px;
+  font-family: Menlo, Consolas, monospace;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+}
+.status.ok { color: var(--ok); }
+.status.err { color: var(--error); }
+
+.preview-pane { overflow: auto; background: var(--bg); }
+#preview { display: grid; place-items: center; min-height: 100%; padding: 24px; }
+#preview svg { max-width: 100%; height: auto; }

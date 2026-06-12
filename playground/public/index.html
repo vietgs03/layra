@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Layra Playground — diagrams at the speed of thought</title>
+<link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+<header>
+  <div class="brand">
+    <span class="logo">◆</span> <strong>Layra</strong>
+    <span class="tag">Rust diagram engine · <span id="perf">—</span></span>
+  </div>
+  <div class="actions">
+    <button id="btn-theme" title="Toggle dark mode">🌓</button>
+    <button id="btn-share" title="Copy shareable link">Share</button>
+    <button id="btn-svg" title="Download SVG">SVG</button>
+    <button id="btn-png" title="Download PNG">PNG</button>
+  </div>
+</header>
+
+<main>
+  <section class="pane editor-pane">
+    <textarea id="editor" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
+    <div id="status" class="status ok">ready</div>
+  </section>
+  <section class="pane preview-pane" id="preview-pane">
+    <div id="preview"></div>
+  </section>
+</main>
+
+<script type="module" src="./app.js"></script>
+</body>
+</html>

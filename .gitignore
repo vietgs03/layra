@@ -2,3 +2,5 @@
 demo.svg
 demo-dark.svg
 pkg/
+playground/dist/
+playground/public/pkg/

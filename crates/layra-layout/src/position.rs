@@ -43,22 +43,30 @@ pub(crate) fn assign_coordinates(lg: &mut LayoutGraph, options: &LayoutOptions) 
     }
 
     // -- Relaxation: pull nodes toward neighbor barycenters, then restore
-    //    order/gaps with a two-directional pass. --
-    for _ in 0..4 {
-        for layer in &lg.layers {
+    //    order/gaps. Alternate sweep direction so positions propagate both
+    //    ways; weight virtual nodes 2x so long edge chains straighten.
+    for round in 0..4 {
+        let layer_indices: Vec<usize> = if round % 2 == 0 {
+            (0..lg.layers.len()).collect()
+        } else {
+            (0..lg.layers.len()).rev().collect()
+        };
+        for li in layer_indices {
+            let layer = &lg.layers[li];
             for &i in layer {
                 let mut sum = 0.0f32;
-                let mut cnt = 0usize;
+                let mut weight = 0.0f32;
+                let w_of = |j: usize| if j >= lg.real_count { 2.0 } else { 1.0 };
                 for &p in &lg.pred[i] {
-                    sum += lg.pos[p].0;
-                    cnt += 1;
+                    sum += lg.pos[p].0 * w_of(p);
+                    weight += w_of(p);
                 }
                 for &s in &lg.succ[i] {
-                    sum += lg.pos[s].0;
-                    cnt += 1;
+                    sum += lg.pos[s].0 * w_of(s);
+                    weight += w_of(s);
                 }
-                if cnt > 0 {
-                    lg.pos[i].0 = sum / cnt as f32;
+                if weight > 0.0 {
+                    lg.pos[i].0 = sum / weight;
                 }
             }
             resolve_overlaps(layer, &lg.sizes, &mut lg.pos, options.node_spacing);
@@ -110,16 +118,17 @@ pub(crate) fn apply(graph: &mut Graph, lg: &LayoutGraph, options: &LayoutOptions
         }
     };
 
-    // Compute raw positions for real nodes.
+    // Compute raw positions for real nodes. Note: `lg.sizes` is in abstract
+    // (cross, main) space, so use the graph's screen-space sizes here.
     let mut min_x = f32::MAX;
     let mut min_y = f32::MAX;
     let raw: Vec<(f32, f32)> = (0..lg.layer.len())
         .map(|i| {
             let (cx, cy) = to_xy(lg.pos[i].0, lg.pos[i].1);
             if i < lg.real_count {
-                let (w, h) = lg.sizes[i];
-                min_x = min_x.min(cx - w / 2.0);
-                min_y = min_y.min(cy - h / 2.0);
+                let size = graph.nodes[i].size;
+                min_x = min_x.min(cx - size.width / 2.0);
+                min_y = min_y.min(cy - size.height / 2.0);
             } else {
                 min_x = min_x.min(cx);
                 min_y = min_y.min(cy);

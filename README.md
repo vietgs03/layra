@@ -67,7 +67,7 @@ cargo test                           # 18 tests across the pipeline
 
 ## Roadmap
 
-- [ ] Orthogonal edge routing (visibility graph + A* with bend penalties)
+- [x] Orthogonal edge routing (localized A* with bend penalties, spatial-grid collision pruning)
 - [ ] Brandes-Köpf coordinate assignment
 - [ ] Subgraph-aware layout (cluster containment constraints)
 - [ ] Iconify icon rendering in nodes

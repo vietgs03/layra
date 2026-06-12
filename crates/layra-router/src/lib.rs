@@ -1,15 +1,22 @@
 //! # layra-router
 //!
-//! Edge routing. Today: clip endpoints to node borders, pass layout
-//! waypoints through, and place labels at the polyline midpoint.
-//!
-//! Planned: orthogonal routing on a visibility graph with A* and bend
-//! penalties (libavoid-style) for draw.io-quality edges.
+//! Edge routing in two tiers:
+//! 1. **Fast path** — clip endpoints to node borders, pass layout
+//!    waypoints through. Most edges in a layered layout are already clear.
+//! 2. **Collision repair** — edges whose polyline cuts through a node are
+//!    re-routed orthogonally around the obstacles with a localized A*
+//!    (bend-penalized, libavoid-style). Only colliding edges pay.
+
+mod grid;
+mod orthogonal;
 
 use layra_core::{Graph, Point, Rect};
 
 pub fn route(graph: &mut Graph) {
     let rects: Vec<Rect> = graph.nodes.iter().map(|n| n.rect).collect();
+    // Spatial index: collision candidates per region instead of all nodes.
+    let index = grid::SpatialGrid::build(&rects);
+    let mut candidates: Vec<usize> = Vec::new();
 
     for edge in &mut graph.edges {
         let src = rects[edge.source.index()];
@@ -40,11 +47,91 @@ pub fn route(graph: &mut Graph) {
         edge.points[0] = clip_to_rect(src, src.center(), first_inner);
         edge.points[n - 1] = clip_to_rect(dst, dst.center(), last_inner);
 
+        // Collision repair: if any segment passes through a node that is
+        // neither endpoint, re-route orthogonally around the obstacles.
+        // The grid keeps this O(local) instead of O(all nodes) per edge.
+        let bbox = polyline_bbox(&edge.points).inflate(4.0);
+        index.query(&bbox, &mut candidates);
+        let collides = edge.points.windows(2).any(|w| {
+            candidates.iter().any(|&i| {
+                i != edge.source.index()
+                    && i != edge.target.index()
+                    && segment_intersects_rect(w[0], w[1], &rects[i].inflate(2.0))
+            })
+        });
+
+        if collides {
+            let region = bbox.inflate(120.0);
+            index.query(&region, &mut candidates);
+            let obstacles: Vec<Rect> = candidates
+                .iter()
+                .filter(|&&i| i != edge.source.index() && i != edge.target.index())
+                .map(|&i| rects[i])
+                .collect();
+            let start = edge.points[0];
+            let goal = edge.points[edge.points.len() - 1];
+            if let Some(path) = orthogonal::route_around(start, goal, &obstacles) {
+                edge.points = path;
+            }
+        }
+
         // Label at geometric midpoint of the polyline.
         if edge.label.is_some() {
             edge.label_pos = Some(polyline_midpoint(&edge.points));
         }
     }
+}
+
+fn polyline_bbox(points: &[Point]) -> Rect {
+    let mut min_x = f32::MAX;
+    let mut min_y = f32::MAX;
+    let mut max_x = f32::MIN;
+    let mut max_y = f32::MIN;
+    for p in points {
+        min_x = min_x.min(p.x);
+        min_y = min_y.min(p.y);
+        max_x = max_x.max(p.x);
+        max_y = max_y.max(p.y);
+    }
+    Rect::new(min_x, min_y, max_x - min_x, max_y - min_y)
+}
+
+/// Conservative segment-vs-rect test via Liang-Barsky clipping.
+fn segment_intersects_rect(a: Point, b: Point, r: &Rect) -> bool {
+    let (mut t0, mut t1) = (0.0f32, 1.0f32);
+    let dx = b.x - a.x;
+    let dy = b.y - a.y;
+    let checks = [
+        (-dx, a.x - r.x),
+        (dx, r.right() - a.x),
+        (-dy, a.y - r.y),
+        (dy, r.bottom() - a.y),
+    ];
+    for (p, q) in checks {
+        if p.abs() < f32::EPSILON {
+            if q < 0.0 {
+                return false;
+            }
+            continue;
+        }
+        let t = q / p;
+        if p < 0.0 {
+            if t > t1 {
+                return false;
+            }
+            if t > t0 {
+                t0 = t;
+            }
+        } else {
+            if t < t0 {
+                return false;
+            }
+            if t < t1 {
+                t1 = t;
+            }
+        }
+    }
+    t0 < t1
 }
 
 /// Intersect the ray `from -> to` (with `from` inside `rect`) against the

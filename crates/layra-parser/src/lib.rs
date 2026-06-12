@@ -180,6 +180,13 @@ impl<'a> Parser<'a> {
         if line.starts_with("linkStyle") {
             return Ok(()); // per-link styling not yet mapped; ignore
         }
+        if is_style_debris(line) {
+            // Mangled copy-paste fragments of classDef/style lines (CSS
+            // tokens like `stroke-width:1.75px;` glued to garbage). Layra
+            // ignores style lines anyway, so their debris is skipped
+            // silently rather than warned about.
+            return Ok(());
+        }
         self.node_or_edge_chain(ln, line)
     }
 
@@ -288,6 +295,27 @@ impl<'a> Parser<'a> {
             }
         }
     }
+}
+
+/// Heuristic: does this unparseable line look like the debris of a styling
+/// statement (classDef/style) mangled by copy-paste? CSS-ish tokens are a
+/// strong signal: `stroke`, `fill:`, `px;`, `color:`, `dasharray`.
+fn is_style_debris(line: &str) -> bool {
+    const SIGNALS: &[&str] = &[
+        "stroke",
+        "fill:",
+        "px;",
+        "px,",
+        "px ",
+        "color:",
+        "dasharray",
+        "classdef",
+        ":1.",
+        ":2.",
+    ];
+    let lower = line.to_ascii_lowercase();
+    let hits: usize = SIGNALS.iter().map(|s| lower.matches(s).count()).sum();
+    hits >= 2
 }
 
 fn parse_direction(s: &str) -> Direction {

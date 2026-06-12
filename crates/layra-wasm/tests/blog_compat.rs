@@ -73,15 +73,27 @@ fn lenient_mode_survives_corrupted_paste() {
     highlighcl kend C"]64748bckend C-4" he:1.75px;
     highlighc kend C"]oup phckend C-4" he:1.75px;"#;
 
-    // Strict mode: fails (first bad line wins).
-    assert!(layra_wasm::render_svg(src, false).is_err());
-
-    // Lenient: renders the valid 2-node subgraph, reports skipped lines.
-    let (svg, warnings) = layra_wasm::render_svg_lenient(src, false).unwrap();
+    // Style debris is recognized and skipped silently: clean render, zero
+    // warnings, even in strict mode.
+    let svg = layra_wasm::render_svg(src, false).unwrap();
     assert!(svg.contains("Load balancer"));
     assert!(svg.contains("Client"));
-    assert_eq!(warnings.len(), 2, "got: {warnings:?}");
-    assert!(warnings[0].contains("line 8"), "got: {}", warnings[0]);
+
+    let (_, warnings) = layra_wasm::render_svg_lenient(src, false).unwrap();
+    assert!(
+        warnings.is_empty(),
+        "style debris should not warn: {warnings:?}"
+    );
+}
+
+#[test]
+fn lenient_mode_warns_on_non_style_garbage() {
+    // Garbage that is NOT style debris must still be surfaced.
+    let src = "flowchart LR\n  a --> b\n  totally ((broken ]] garbage";
+    let (svg, warnings) = layra_wasm::render_svg_lenient(src, false).unwrap();
+    assert!(svg.contains("<svg"));
+    assert_eq!(warnings.len(), 1);
+    assert!(warnings[0].contains("line 3"));
 }
 
 #[test]

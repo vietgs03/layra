@@ -142,7 +142,12 @@ main { display: flex; flex: 1; min-height: 0; }
   transform-origin: 0 0;
   will-change: transform;
 }
-#preview svg { display: block; }
+#preview svg {
+  display: block;
+  /* Nodes dragged beyond the original viewBox must stay visible —
+     SVG clips to its viewport by default. */
+  overflow: visible;
+}
 
 .zoom-controls {
   position: absolute;

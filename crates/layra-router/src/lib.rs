@@ -89,7 +89,56 @@ pub fn route(graph: &mut Graph) {
         // Label placement happens in a second pass (needs all routed paths).
     }
 
+    separate_parallel_edges(graph);
     place_labels(graph);
+}
+
+/// Edges sharing the same node pair (in either direction) would render on
+/// top of each other. Offset each one perpendicular to its direction,
+/// symmetric around the original line: 2 edges → ±5px, 3 → -10/0/+10...
+fn separate_parallel_edges(graph: &mut Graph) {
+    use std::collections::HashMap;
+
+    const GAP: f32 = 5.0;
+
+    let mut groups: HashMap<(u32, u32), Vec<usize>> = HashMap::new();
+    for (i, e) in graph.edges.iter().enumerate() {
+        if e.source == e.target {
+            continue; // self loops have their own shape
+        }
+        let key = (e.source.0.min(e.target.0), e.source.0.max(e.target.0));
+        groups.entry(key).or_default().push(i);
+    }
+
+    for indices in groups.values().filter(|v| v.len() > 1) {
+        let n = indices.len() as f32;
+        for (k, &ei) in indices.iter().enumerate() {
+            let offset = (k as f32 - (n - 1.0) / 2.0) * GAP * 2.0;
+            if offset == 0.0 {
+                continue;
+            }
+            let edge = &mut graph.edges[ei];
+            if edge.points.len() < 2 {
+                continue;
+            }
+            // Perpendicular of the overall direction; flip for reversed
+            // edges so A->B and B->A move to opposite sides consistently.
+            let first = edge.points[0];
+            let last = edge.points[edge.points.len() - 1];
+            let (dx, dy) = (last.x - first.x, last.y - first.y);
+            let len = (dx * dx + dy * dy).sqrt().max(0.001);
+            let sign = if edge.source.0 <= edge.target.0 {
+                1.0
+            } else {
+                -1.0
+            };
+            let (nx, ny) = (-dy / len * sign, dx / len * sign);
+            for p in &mut edge.points {
+                p.x += nx * offset;
+                p.y += ny * offset;
+            }
+        }
+    }
 }
 
 /// Place edge labels offset perpendicular to the path so text never sits

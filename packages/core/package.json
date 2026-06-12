@@ -1,0 +1,28 @@
+{
+  "name": "@vietgs03/layra",
+  "version": "0.1.0",
+  "description": "Mermaid-compatible diagram renderer in Rust/WASM — layout in microseconds, 11 diagram types, inline icons",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vietgs03/layra.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://vietgs03.github.io/layra/",
+  "keywords": ["mermaid", "diagram", "flowchart", "svg", "wasm", "rust", "sequence-diagram", "gantt"],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "build": "./build.sh",
+    "test": "node test/smoke.mjs"
+  }
+}

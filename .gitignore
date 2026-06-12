@@ -4,3 +4,5 @@ demo-dark.svg
 pkg/
 playground/dist/
 playground/public/pkg/
+packages/core/dist/
+packages/core/*.tgz

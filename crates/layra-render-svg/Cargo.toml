@@ -1,0 +1,11 @@
+[package]
+name = "layra-render-svg"
+description = "SVG renderer with the Layra editorial theme (role taxonomy, shape library)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+layra-core = { workspace = true }

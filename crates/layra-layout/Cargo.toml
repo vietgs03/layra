@@ -1,0 +1,11 @@
+[package]
+name = "layra-layout"
+description = "Sugiyama layered layout: layer assignment, crossing minimization, Brandes-Köpf coordinates"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+layra-core = { workspace = true }

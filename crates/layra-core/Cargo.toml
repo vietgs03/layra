@@ -1,0 +1,12 @@
+[package]
+name = "layra-core"
+description = "Core IR (intermediate representation) and geometry types for the Layra diagram engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+thiserror = { workspace = true }

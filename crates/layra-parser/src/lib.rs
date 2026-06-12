@@ -1,0 +1,558 @@
+//! # layra-parser
+//!
+//! Parses a Mermaid-compatible flowchart dialect into the Layra IR.
+//!
+//! Supported today (the pragmatic 90% of real-world flowcharts):
+//!
+//! ```text
+//! flowchart LR
+//!   api["API Gateway"]:::gateway --> svc["Order Service"]:::service
+//!   svc -->|persist| db[("Postgres")]:::database
+//!   svc -.->|events| q{{Kafka}}:::queue
+//!   subgraph cluster["Data Plane"]
+//!     db
+//!     q
+//!   end
+//! ```
+//!
+//! - Node shapes from bracket syntax: `[rect]`, `(rounded)`, `([stadium])`,
+//!   `[(cylinder)]`, `((circle))`, `{diamond}`, `{{hexagon}}`
+//! - Edges: `-->`, `---`, `-.->`, `==>`, `<-->`, with `|label|` or `-- label -->`
+//! - `:::role` class bindings mapping to the component taxonomy
+//! - `subgraph id["Label"] ... end` (nesting supported)
+//! - Icon refs inside labels: `{icon:logos:postgresql}` (stripped from text,
+//!   stored on the node)
+
+use layra_core::{
+    ComponentRole, Direction, Edge, EdgeKind, EdgeStyle, Graph, Node, NodeId, NodeShape, Subgraph,
+    SubgraphId,
+};
+use std::collections::HashMap;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum ParseError {
+    #[error("line {line}: {message}")]
+    Syntax { line: usize, message: String },
+}
+
+pub fn parse(source: &str) -> Result<Graph, ParseError> {
+    Parser::new(source).run()
+}
+
+struct Parser<'a> {
+    lines: Vec<(usize, &'a str)>,
+    graph: Graph,
+    by_name: HashMap<String, NodeId>,
+    subgraph_stack: Vec<SubgraphId>,
+}
+
+impl<'a> Parser<'a> {
+    fn new(source: &'a str) -> Self {
+        let lines = source
+            .lines()
+            .enumerate()
+            .map(|(i, l)| (i + 1, l.trim()))
+            .filter(|(_, l)| !l.is_empty() && !l.starts_with("%%"))
+            .collect();
+        Self {
+            lines,
+            graph: Graph::default(),
+            by_name: HashMap::new(),
+            subgraph_stack: Vec::new(),
+        }
+    }
+
+    fn run(mut self) -> Result<Graph, ParseError> {
+        let lines = std::mem::take(&mut self.lines);
+        let mut iter = lines.into_iter();
+
+        // Optional header line.
+        let mut pending: Option<(usize, &str)> = None;
+        if let Some((ln, line)) = iter.next() {
+            if let Some(rest) = line
+                .strip_prefix("flowchart")
+                .or_else(|| line.strip_prefix("graph"))
+            {
+                self.graph.direction = parse_direction(rest.trim());
+            } else {
+                pending = Some((ln, line));
+            }
+        }
+
+        for (ln, line) in pending.into_iter().chain(iter) {
+            self.statement(ln, line)?;
+        }
+        Ok(self.graph)
+    }
+
+    fn statement(&mut self, ln: usize, line: &str) -> Result<(), ParseError> {
+        if let Some(rest) = line.strip_prefix("subgraph") {
+            return self.open_subgraph(ln, rest.trim());
+        }
+        if line == "end" {
+            if self.subgraph_stack.pop().is_none() {
+                return Err(ParseError::Syntax {
+                    line: ln,
+                    message: "'end' without matching 'subgraph'".into(),
+                });
+            }
+            return Ok(());
+        }
+        if line.starts_with("classDef") || line.starts_with("class ") || line.starts_with("style") {
+            return Ok(()); // theming handled by Layra's taxonomy; ignore
+        }
+        self.node_or_edge_chain(ln, line)
+    }
+
+    fn open_subgraph(&mut self, _ln: usize, rest: &str) -> Result<(), ParseError> {
+        // Forms: `subgraph name`, `subgraph name["Label"]`
+        let (name, label) = if let Some(idx) = rest.find('[') {
+            let name = rest[..idx].trim().to_string();
+            let label = rest[idx + 1..]
+                .trim_end_matches(']')
+                .trim_matches('"')
+                .to_string();
+            (name, label)
+        } else {
+            let name = rest.trim().trim_matches('"').to_string();
+            (name.clone(), name)
+        };
+
+        let parent = self.subgraph_stack.last().copied();
+        let id = self.graph.add_subgraph(Subgraph {
+            name,
+            label,
+            nodes: Vec::new(),
+            parent,
+            rect: Default::default(),
+        });
+        self.subgraph_stack.push(id);
+        Ok(())
+    }
+
+    /// Parse `a --> b -.-> c` style chains, including standalone node decls.
+    fn node_or_edge_chain(&mut self, ln: usize, line: &str) -> Result<(), ParseError> {
+        let mut rest = line;
+        let mut prev: Option<(NodeId, EdgeOp)> = None;
+
+        loop {
+            let (node_text, after) = split_node_segment(rest);
+            let node_id = self.intern_node(ln, node_text.trim())?;
+
+            if let Some((src, op)) = prev.take() {
+                self.graph.add_edge(Edge {
+                    source: src,
+                    target: node_id,
+                    label: op.label,
+                    style: op.style,
+                    kind: op.kind,
+                    points: vec![],
+                    label_pos: None,
+                });
+            }
+
+            let after = after.trim();
+            if after.is_empty() {
+                return Ok(());
+            }
+            let (op, tail) = parse_edge_op(after).ok_or_else(|| ParseError::Syntax {
+                line: ln,
+                message: format!("expected edge operator near '{after}'"),
+            })?;
+            prev = Some((node_id, op));
+            rest = tail;
+        }
+    }
+
+    /// Get-or-create a node from a declaration like `db[("Postgres")]:::database`.
+    fn intern_node(&mut self, ln: usize, text: &str) -> Result<NodeId, ParseError> {
+        let decl = parse_node_decl(text).ok_or_else(|| ParseError::Syntax {
+            line: ln,
+            message: format!("cannot parse node '{text}'"),
+        })?;
+
+        if let Some(&id) = self.by_name.get(&decl.name) {
+            // Enrich an earlier bare reference with label/shape/role info.
+            let node = self.graph.node_mut(id);
+            if let Some(label) = decl.label {
+                node.label = label;
+            }
+            if let Some(shape) = decl.shape {
+                node.shape = shape;
+            }
+            if let Some(role) = decl.role {
+                node.role = role;
+            }
+            if decl.icon.is_some() {
+                node.icon = decl.icon;
+            }
+            self.claim_for_subgraph(id);
+            return Ok(id);
+        }
+
+        let mut node = Node::new(decl.name.clone(), decl.label.unwrap_or(decl.name.clone()));
+        node.shape = decl.shape.unwrap_or_default();
+        node.role = decl.role.unwrap_or_else(|| infer_role(node.shape));
+        node.icon = decl.icon;
+        node.parent = self.subgraph_stack.last().copied();
+        let id = self.graph.add_node(node);
+        self.by_name.insert(decl.name, id);
+        self.claim_for_subgraph(id);
+        Ok(id)
+    }
+
+    fn claim_for_subgraph(&mut self, id: NodeId) {
+        if let Some(&sg) = self.subgraph_stack.last() {
+            let list = &mut self.graph.subgraphs[sg.index()].nodes;
+            if !list.contains(&id) {
+                list.push(id);
+            }
+        }
+    }
+}
+
+fn parse_direction(s: &str) -> Direction {
+    match s {
+        "LR" => Direction::LeftRight,
+        "RL" => Direction::RightLeft,
+        "BT" => Direction::BottomTop,
+        _ => Direction::TopBottom,
+    }
+}
+
+/// Default roles for shapes with strong conventions.
+fn infer_role(shape: NodeShape) -> ComponentRole {
+    match shape {
+        NodeShape::Cylinder => ComponentRole::Database,
+        NodeShape::Hexagon => ComponentRole::Queue,
+        _ => ComponentRole::Generic,
+    }
+}
+
+struct EdgeOp {
+    style: EdgeStyle,
+    kind: EdgeKind,
+    label: Option<String>,
+}
+
+/// Split off the leading node segment of a chain, stopping before an edge
+/// operator. Respects bracket nesting so `a["x --> y"]` parses correctly.
+fn split_node_segment(s: &str) -> (&str, &str) {
+    let bytes = s.as_bytes();
+    let mut depth = 0i32;
+    let mut i = 0;
+    while i < bytes.len() {
+        let c = bytes[i] as char;
+        match c {
+            '[' | '(' | '{' => depth += 1,
+            ']' | ')' | '}' => depth -= 1,
+            '"' => {
+                // skip quoted span
+                i += 1;
+                while i < bytes.len() && bytes[i] as char != '"' {
+                    i += 1;
+                }
+            }
+            '-' | '=' | '<' if depth == 0 => {
+                // Potential edge operator start. Require at least `--`/`==`/`<-`.
+                let rest = &s[i..];
+                if rest.starts_with("--")
+                    || rest.starts_with("-.")
+                    || rest.starts_with("==")
+                    || rest.starts_with("<--")
+                    || rest.starts_with("<==")
+                {
+                    return (&s[..i], rest);
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    (s, "")
+}
+
+/// Parse an edge operator (with optional label) at the start of `s`.
+/// Returns the op and the remaining tail (the next node segment).
+fn parse_edge_op(s: &str) -> Option<(EdgeOp, &str)> {
+    // `-- label -->` inline-label form
+    // `-->|label|` pipe-label form
+    // styles: --> solid, -.-> dashed, ==> thick, --- open line, <--> bidi
+    let (kind_prefix, s) = if let Some(rest) = s.strip_prefix('<') {
+        (true, rest)
+    } else {
+        (false, s)
+    };
+
+    let (style, after) = if let Some(rest) = s.strip_prefix("-.") {
+        // -.-> or -.text.->  (we only support -.->)
+        let rest = rest.strip_prefix('-')?;
+        (EdgeStyle::Dashed, rest)
+    } else if let Some(rest) = s.strip_prefix("==") {
+        (EdgeStyle::Thick, rest)
+    } else if let Some(rest) = s.strip_prefix("--") {
+        (EdgeStyle::Solid, rest)
+    } else {
+        return None;
+    };
+
+    // Inline label: `-- label -->`
+    if style == EdgeStyle::Solid && !after.starts_with('>') && !after.starts_with('-') {
+        if let Some(end) = after.find("-->") {
+            let label = after[..end].trim();
+            let tail = &after[end + 3..];
+            return Some((
+                EdgeOp {
+                    style,
+                    kind: if kind_prefix {
+                        EdgeKind::Bidirectional
+                    } else {
+                        EdgeKind::Arrow
+                    },
+                    label: (!label.is_empty()).then(|| label.to_string()),
+                },
+                tail,
+            ));
+        }
+    }
+
+    let (kind, after) = if let Some(rest) = after.strip_prefix('>') {
+        (
+            if kind_prefix {
+                EdgeKind::Bidirectional
+            } else {
+                EdgeKind::Arrow
+            },
+            rest,
+        )
+    } else if let Some(rest) = after.strip_prefix('-') {
+        (EdgeKind::Open, rest)
+    } else if let Some(rest) = after.strip_prefix('=') {
+        (EdgeKind::Open, rest)
+    } else {
+        (EdgeKind::Arrow, after)
+    };
+
+    // Pipe label: `|label|`
+    let (label, tail) = if let Some(rest) = after.trim_start().strip_prefix('|') {
+        let end = rest.find('|')?;
+        (Some(rest[..end].trim().to_string()), &rest[end + 1..])
+    } else {
+        (None, after)
+    };
+
+    Some((EdgeOp { style, kind, label }, tail))
+}
+
+struct NodeDecl {
+    name: String,
+    label: Option<String>,
+    shape: Option<NodeShape>,
+    role: Option<ComponentRole>,
+    icon: Option<String>,
+}
+
+/// Parse `name<bracket label>:::role`.
+fn parse_node_decl(text: &str) -> Option<NodeDecl> {
+    let text = text.trim();
+    if text.is_empty() {
+        return None;
+    }
+
+    // Split off `:::role`
+    let (body, role) = match text.split_once(":::") {
+        Some((b, r)) => (b.trim(), parse_role(r.trim())),
+        None => (text, None),
+    };
+
+    // Find bracket start.
+    let bracket_at = body.find(['[', '(', '{']);
+    let Some(idx) = bracket_at else {
+        // Bare reference.
+        let name = body.trim();
+        if name.is_empty() || !is_ident(name) {
+            return None;
+        }
+        return Some(NodeDecl {
+            name: name.to_string(),
+            label: None,
+            shape: None,
+            role,
+            icon: None,
+        });
+    };
+
+    let name = body[..idx].trim();
+    if name.is_empty() || !is_ident(name) {
+        return None;
+    }
+    let bracket = body[idx..].trim();
+
+    let (shape, raw_label) = parse_bracket(bracket)?;
+    let (label, icon) = extract_icon(raw_label);
+
+    Some(NodeDecl {
+        name: name.to_string(),
+        label: Some(label),
+        shape: Some(shape),
+        role,
+        icon,
+    })
+}
+
+fn is_ident(s: &str) -> bool {
+    s.chars()
+        .all(|c| c.is_alphanumeric() || c == '_' || c == '-' || c == '.')
+}
+
+/// Map bracket syntax to shape, returning the inner label text.
+fn parse_bracket(s: &str) -> Option<(NodeShape, String)> {
+    let strip = |s: &str, open: &str, close: &str| -> Option<String> {
+        s.strip_prefix(open)?
+            .strip_suffix(close)
+            .map(|inner| inner.trim().trim_matches('"').to_string())
+    };
+
+    // Order matters: longest delimiters first.
+    if let Some(l) = strip(s, "([", "])") {
+        return Some((NodeShape::Stadium, l));
+    }
+    if let Some(l) = strip(s, "[(", ")]") {
+        return Some((NodeShape::Cylinder, l));
+    }
+    if let Some(l) = strip(s, "((", "))") {
+        return Some((NodeShape::Circle, l));
+    }
+    if let Some(l) = strip(s, "{{", "}}") {
+        return Some((NodeShape::Hexagon, l));
+    }
+    if let Some(l) = strip(s, "[", "]") {
+        return Some((NodeShape::Rect, l));
+    }
+    if let Some(l) = strip(s, "(", ")") {
+        return Some((NodeShape::RoundedRect, l));
+    }
+    if let Some(l) = strip(s, "{", "}") {
+        return Some((NodeShape::Diamond, l));
+    }
+    None
+}
+
+fn parse_role(s: &str) -> Option<ComponentRole> {
+    Some(match s {
+        "service" => ComponentRole::Service,
+        "database" | "db" => ComponentRole::Database,
+        "cache" => ComponentRole::Cache,
+        "queue" => ComponentRole::Queue,
+        "gateway" => ComponentRole::Gateway,
+        "client" => ComponentRole::Client,
+        "external" => ComponentRole::External,
+        "storage" => ComponentRole::Storage,
+        "compute" => ComponentRole::Compute,
+        "highlight" => ComponentRole::Highlight,
+        _ => ComponentRole::Generic,
+    })
+}
+
+/// Pull `{icon:pack:name}` out of a label.
+fn extract_icon(label: String) -> (String, Option<String>) {
+    let Some(start) = label.find("{icon:") else {
+        return (label, None);
+    };
+    let Some(end_rel) = label[start..].find('}') else {
+        return (label, None);
+    };
+    let end = start + end_rel;
+    let icon = label[start + 6..end].trim().to_string();
+    let mut text = String::with_capacity(label.len());
+    text.push_str(label[..start].trim_end());
+    let after = label[end + 1..].trim_start();
+    if !text.is_empty() && !after.is_empty() {
+        text.push(' ');
+    }
+    text.push_str(after);
+    (text.trim().to_string(), Some(icon))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_basic_flowchart() {
+        let g = parse(
+            r#"flowchart LR
+              api["API Gateway"]:::gateway --> svc["Order Service"]:::service
+              svc -->|persist| db[("Postgres")]:::database
+              svc -.->|events| q{{Kafka}}
+            "#,
+        )
+        .unwrap();
+
+        assert_eq!(g.direction, Direction::LeftRight);
+        assert_eq!(g.nodes.len(), 4);
+        assert_eq!(g.edges.len(), 3);
+
+        let db = g.node(g.node_by_name("db").unwrap());
+        assert_eq!(db.shape, NodeShape::Cylinder);
+        assert_eq!(db.role, ComponentRole::Database);
+        assert_eq!(db.label, "Postgres");
+
+        let q = g.node(g.node_by_name("q").unwrap());
+        assert_eq!(q.shape, NodeShape::Hexagon);
+        assert_eq!(q.role, ComponentRole::Queue); // inferred from shape
+
+        assert_eq!(g.edges[1].label.as_deref(), Some("persist"));
+        assert_eq!(g.edges[2].style, EdgeStyle::Dashed);
+    }
+
+    #[test]
+    fn parses_subgraphs() {
+        let g = parse(
+            r#"flowchart TB
+              subgraph data["Data Plane"]
+                db[("PG")]
+                cache(("Redis"))
+              end
+              api --> db
+            "#,
+        )
+        .unwrap();
+        assert_eq!(g.subgraphs.len(), 1);
+        assert_eq!(g.subgraphs[0].label, "Data Plane");
+        assert_eq!(g.subgraphs[0].nodes.len(), 2);
+    }
+
+    #[test]
+    fn chain_of_three() {
+        let g = parse("flowchart LR\na --> b --> c").unwrap();
+        assert_eq!(g.nodes.len(), 3);
+        assert_eq!(g.edges.len(), 2);
+    }
+
+    #[test]
+    fn icon_extraction() {
+        let g = parse(
+            r#"flowchart LR
+          db[("{icon:logos:postgresql} Postgres")]"#,
+        )
+        .unwrap();
+        let db = g.node(g.node_by_name("db").unwrap());
+        assert_eq!(db.icon.as_deref(), Some("logos:postgresql"));
+        assert_eq!(db.label, "Postgres");
+    }
+
+    #[test]
+    fn inline_label_form() {
+        let g = parse("flowchart LR\na -- calls --> b").unwrap();
+        assert_eq!(g.edges[0].label.as_deref(), Some("calls"));
+    }
+
+    #[test]
+    fn error_has_line_number() {
+        let err = parse("flowchart LR\nsubgraph x\nend\nend").unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("line 4"), "got: {msg}");
+    }
+}

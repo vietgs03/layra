@@ -1,0 +1,40 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/layra-core",
+    "crates/layra-layout",
+    "crates/layra-router",
+    "crates/layra-text",
+    "crates/layra-render-svg",
+    "crates/layra-parser",
+    "crates/layra-wasm",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/vietgs03/layra"
+authors = ["Hoàng Xuân Việt <viet.gs03@gmail.com>"]
+
+[workspace.dependencies]
+layra-core = { path = "crates/layra-core" }
+layra-layout = { path = "crates/layra-layout" }
+layra-router = { path = "crates/layra-router" }
+layra-text = { path = "crates/layra-text" }
+layra-render-svg = { path = "crates/layra-render-svg" }
+layra-parser = { path = "crates/layra-parser" }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+
+# Optimize WASM size
+[profile.wasm-release]
+inherits = "release"
+opt-level = "s"

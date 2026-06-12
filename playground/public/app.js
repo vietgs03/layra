@@ -187,32 +187,70 @@ viewport.addEventListener("wheel", (e) => {
 }, { passive: false });
 
 let panState = null;
-let dragState = null; // { group, dx, dy } node being dragged
+let dragState = null; // node being dragged
+// Manual node offsets keyed by node name; survive re-renders and apply
+// to both the node group and its connected edges (which fade while
+// detached from their routed path).
+let nodeOffsets = new Map();
+let spaceHeld = false;
+
+function applyOffsets() {
+  const svg = preview.querySelector("svg");
+  if (!svg) return;
+  // index -> name lookup for edges
+  const nameOf = {};
+  for (const g of svg.querySelectorAll("[data-node]")) {
+    nameOf[g.dataset.node] = g.dataset.name;
+    const off = nodeOffsets.get(g.dataset.name);
+    g.setAttribute("transform", off ? `translate(${off.x} ${off.y})` : "");
+  }
+  for (const g of svg.querySelectorAll("[data-edge]")) {
+    const a = nodeOffsets.get(nameOf[g.dataset.from]);
+    const bOff = nodeOffsets.get(nameOf[g.dataset.to]);
+    if (!a && !bOff) {
+      g.setAttribute("transform", "");
+      g.style.opacity = "";
+      continue;
+    }
+    // Both ends moved by the same delta: translate the edge along.
+    if (a && bOff && Math.abs(a.x - bOff.x) < 0.5 && Math.abs(a.y - bOff.y) < 0.5) {
+      g.setAttribute("transform", `translate(${a.x} ${a.y})`);
+      g.style.opacity = "";
+    } else {
+      // Ends diverged: keep the edge but dim it so it's clearly stale.
+      g.setAttribute("transform", "");
+      g.style.opacity = "0.35";
+    }
+  }
+}
 
 viewport.addEventListener("pointerdown", (e) => {
-  if (e.button !== 0) return;
+  const isPanButton = e.button === 1; // middle mouse always pans
+  if (e.button !== 0 && !isPanButton) return;
+
   const nodeGroup = e.target.closest?.("[data-node]");
-  if (nodeGroup) {
-    // Drag a node: translate its <g> live (visual-only refinement; the
-    // source of truth stays the text, like mermaid.live but interactive).
-    dragState = { group: nodeGroup, sx: e.clientX, sy: e.clientY, tx: 0, ty: 0 };
-    const prev = nodeGroup.getAttribute("transform");
-    if (prev) {
-      const m = /translate\(([-\d.]+)[ ,]([-\d.]+)\)/.exec(prev);
-      if (m) { dragState.tx = parseFloat(m[1]); dragState.ty = parseFloat(m[2]); }
-    }
+  // Space-drag or middle-drag pans from anywhere, draw.io-style;
+  // plain left-drag on a node moves the node.
+  if (nodeGroup && !spaceHeld && !isPanButton) {
+    const name = nodeGroup.dataset.name;
+    const off = nodeOffsets.get(name) ?? { x: 0, y: 0 };
+    dragState = { name, sx: e.clientX, sy: e.clientY, ox: off.x, oy: off.y };
     viewport.setPointerCapture(e.pointerId);
+    e.preventDefault();
     return;
   }
   panState = { px: e.clientX, py: e.clientY, vx: view.x, vy: view.y };
   viewport.classList.add("panning");
   viewport.setPointerCapture(e.pointerId);
+  e.preventDefault();
 });
 viewport.addEventListener("pointermove", (e) => {
   if (dragState) {
-    const dx = dragState.tx + (e.clientX - dragState.sx) / view.scale;
-    const dy = dragState.ty + (e.clientY - dragState.sy) / view.scale;
-    dragState.group.setAttribute("transform", `translate(${dx} ${dy})`);
+    nodeOffsets.set(dragState.name, {
+      x: dragState.ox + (e.clientX - dragState.sx) / view.scale,
+      y: dragState.oy + (e.clientY - dragState.sy) / view.scale,
+    });
+    applyOffsets();
     return;
   }
   if (!panState) return;
@@ -225,6 +263,20 @@ viewport.addEventListener("pointerup", () => {
   dragState = null;
   panState = null;
   viewport.classList.remove("panning");
+});
+// Space bar = pan mode (grab cursor over nodes too).
+window.addEventListener("keydown", (e) => {
+  if (e.code === "Space" && document.activeElement !== editor) {
+    spaceHeld = true;
+    viewport.classList.add("pan-mode");
+    e.preventDefault();
+  }
+});
+window.addEventListener("keyup", (e) => {
+  if (e.code === "Space") {
+    spaceHeld = false;
+    viewport.classList.remove("pan-mode");
+  }
 });
 
 $("zoom-in").addEventListener("click", () =>
@@ -315,9 +367,15 @@ function highlightLine(line) {
     `rgba(220,38,38,.12) ${y + lh}px, transparent ${y + lh}px)`;
 }
 
+let lastType = null;
 function doRender() {
   rafPending = false;
   const src = editor.value;
+  const type = detectType(src);
+  if (type !== lastType) {
+    lastType = type;
+    nodeOffsets = new Map();
+  }
   localStorage.setItem(AUTOSAVE_KEY, src);
   markActiveTemplate(src);
   const t0 = performance.now();
@@ -327,6 +385,7 @@ function doRender() {
     perf.textContent = dt < 1 ? `${(dt * 1000).toFixed(0)} µs` : `${dt.toFixed(1)} ms`;
     lastGoodSvg = svg;
     swapSvg(svg);
+    applyOffsets();
     if (!userTouchedView) fitToView();
     resolveMissingIcons(src);
     if (warnings.length) {
@@ -447,6 +506,7 @@ $("templates").addEventListener("click", (e) => {
   const tpl = e.target?.dataset?.tpl;
   if (!tpl || !TEMPLATES[tpl]) return;
   editor.value = TEMPLATES[tpl];
+  nodeOffsets = new Map();
   userTouchedView = false;
   scheduleRender();
 });

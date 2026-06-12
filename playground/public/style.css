@@ -186,3 +186,6 @@ main { display: flex; flex: 1; min-height: 0; }
 
 [data-node] { cursor: move; }
 [data-node]:hover > * { filter: brightness(0.96); }
+
+#viewport.pan-mode, #viewport.pan-mode [data-node] { cursor: grab; }
+#viewport.pan-mode.panning { cursor: grabbing; }

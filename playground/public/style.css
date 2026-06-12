@@ -183,3 +183,6 @@ main { display: flex; flex: 1; min-height: 0; }
   .editor-pane { width: 100% !important; height: 45%; }
   #splitter { display: none; }
 }
+
+[data-node] { cursor: move; }
+[data-node]:hover > * { filter: brightness(0.96); }

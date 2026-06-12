@@ -60,11 +60,15 @@ pub fn render_with_icons(graph: &Graph, theme: &Theme, icons: Option<&IconRegist
     for sg in &graph.subgraphs {
         write_subgraph(&mut svg, sg, theme);
     }
-    for edge in &graph.edges {
+    for (i, edge) in graph.edges.iter().enumerate() {
+        let _ = write!(svg, r#"<g data-edge="{i}">"#);
         write_edge(&mut svg, edge, theme);
+        svg.push_str("</g>");
     }
-    for node in &graph.nodes {
+    for (i, node) in graph.nodes.iter().enumerate() {
+        let _ = write!(svg, r#"<g data-node="{i}">"#);
         write_node(&mut svg, node, theme, icons);
+        svg.push_str("</g>");
     }
 
     svg.push_str("</svg>");

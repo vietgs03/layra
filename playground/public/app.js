@@ -187,13 +187,34 @@ viewport.addEventListener("wheel", (e) => {
 }, { passive: false });
 
 let panState = null;
+let dragState = null; // { group, dx, dy } node being dragged
+
 viewport.addEventListener("pointerdown", (e) => {
   if (e.button !== 0) return;
+  const nodeGroup = e.target.closest?.("[data-node]");
+  if (nodeGroup) {
+    // Drag a node: translate its <g> live (visual-only refinement; the
+    // source of truth stays the text, like mermaid.live but interactive).
+    dragState = { group: nodeGroup, sx: e.clientX, sy: e.clientY, tx: 0, ty: 0 };
+    const prev = nodeGroup.getAttribute("transform");
+    if (prev) {
+      const m = /translate\(([-\d.]+)[ ,]([-\d.]+)\)/.exec(prev);
+      if (m) { dragState.tx = parseFloat(m[1]); dragState.ty = parseFloat(m[2]); }
+    }
+    viewport.setPointerCapture(e.pointerId);
+    return;
+  }
   panState = { px: e.clientX, py: e.clientY, vx: view.x, vy: view.y };
   viewport.classList.add("panning");
   viewport.setPointerCapture(e.pointerId);
 });
 viewport.addEventListener("pointermove", (e) => {
+  if (dragState) {
+    const dx = dragState.tx + (e.clientX - dragState.sx) / view.scale;
+    const dy = dragState.ty + (e.clientY - dragState.sy) / view.scale;
+    dragState.group.setAttribute("transform", `translate(${dx} ${dy})`);
+    return;
+  }
   if (!panState) return;
   view.x = panState.vx + (e.clientX - panState.px);
   view.y = panState.vy + (e.clientY - panState.py);
@@ -201,6 +222,7 @@ viewport.addEventListener("pointermove", (e) => {
   applyView();
 });
 viewport.addEventListener("pointerup", () => {
+  dragState = null;
   panState = null;
   viewport.classList.remove("panning");
 });

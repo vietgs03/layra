@@ -17,7 +17,7 @@ pub mod graph;
 pub mod sequence;
 pub mod style;
 
-pub use charts::PieChart;
+pub use charts::{GanttChart, GanttSection, GanttTask, PieChart, TaskStatus};
 pub use geometry::{Point, Rect, Size};
 pub use graph::{Direction, Edge, EdgeId, EdgeKind, Graph, Node, NodeId, Subgraph, SubgraphId};
 pub use sequence::{
@@ -34,4 +34,5 @@ pub enum Document {
     Graph(Graph),
     Sequence(SequenceDiagram),
     Pie(PieChart),
+    Gantt(GanttChart),
 }

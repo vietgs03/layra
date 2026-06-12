@@ -7,6 +7,7 @@
 //! colored title pills, thin neutral edges.
 
 mod fmt;
+mod gantt;
 mod pie;
 mod sequence;
 mod shapes;
@@ -16,6 +17,7 @@ use layra_core::{EdgeKind, EdgeStyle, Graph};
 use layra_icons::IconRegistry;
 use std::fmt::Write;
 
+pub use gantt::render_gantt;
 pub use pie::render_pie;
 pub use sequence::render_sequence;
 pub use theme::Theme;

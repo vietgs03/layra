@@ -49,7 +49,7 @@ Fast enough to re-render on every keystroke.
 | `classDiagram` | ✅ | compartments, UML markers (inheritance/composition/aggregation), cardinalities |
 | `erDiagram` | ✅ | attribute blocks, crow's-foot cardinality labels |
 | `pie` | ✅ | title, showData, percentage labels, legend |
-| `gantt` | ⏳ | next |
+| `gantt` | ✅ | sections, after-dependencies, done/active/crit, milestones, date axis |
 
 ## Syntax
 

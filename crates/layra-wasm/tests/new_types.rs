@@ -71,3 +71,27 @@ fn dark_theme_works_for_all_new_types() {
         assert!(svg.contains("#0f1115"), "dark background for {src:?}");
     }
 }
+
+#[test]
+fn gantt_end_to_end() {
+    let svg = layra_wasm::render_svg(
+        "gantt\n\
+         title Release plan\n\
+         dateFormat YYYY-MM-DD\n\
+         section Build\n\
+         Engine :done, eng, 2026-01-01, 30d\n\
+         Playground :active, play, after eng, 14d\n\
+         section Ship\n\
+         Launch :milestone, 2026-03-01, 0d",
+        false,
+    )
+    .unwrap();
+    assert!(svg.contains("Release plan"));
+    assert!(svg.contains("Engine"));
+    assert!(svg.contains("Playground"));
+    // Bars + milestone diamond present.
+    assert!(svg.matches("<rect").count() >= 3);
+    assert!(svg.contains("<path"), "milestone diamond");
+    // Axis ticks exist (MM-DD labels).
+    assert!(svg.contains("01-"), "date axis ticks");
+}

@@ -63,6 +63,12 @@ pub fn render_svg_lenient(source: &str, dark: bool) -> Result<(String, Vec<Strin
             }
             layra_render_svg::render_pie(&chart, &theme)
         }
+        layra_core::Document::Gantt(chart) => {
+            if chart.tasks().next().is_none() && !warnings.is_empty() {
+                return Err(warnings.into_iter().next().unwrap());
+            }
+            layra_render_svg::render_gantt(&chart, &theme)
+        }
     };
     Ok((svg, warnings))
 }
@@ -125,6 +131,9 @@ pub fn layout_json(source: &str) -> Result<String, JsError> {
         }
         layra_core::Document::Pie(chart) => {
             serde_json::json!({ "kind": "pie", "pie": chart })
+        }
+        layra_core::Document::Gantt(chart) => {
+            serde_json::json!({ "kind": "gantt", "gantt": chart })
         }
     };
     serde_json::to_string(&value).map_err(|e| JsError::new(&e.to_string()))

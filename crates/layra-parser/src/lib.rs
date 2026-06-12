@@ -32,6 +32,7 @@ use thiserror::Error;
 
 mod class;
 mod er;
+mod gantt;
 mod pie;
 mod sequence;
 mod state;
@@ -84,6 +85,10 @@ pub fn parse_document_lenient(source: &str) -> (Document, Vec<ParseError>) {
     if header.starts_with("erDiagram") {
         let (graph, warnings) = er::parse_lenient(&lines[1..]);
         return (Document::Graph(graph), warnings);
+    }
+    if header == "gantt" {
+        let (chart, warnings) = gantt::parse_lenient(&lines[1..]);
+        return (Document::Gantt(chart), warnings);
     }
     if let Some(rest) = header.strip_prefix("pie") {
         let (chart, warnings) = pie::parse_lenient(rest, &lines[1..]);

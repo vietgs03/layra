@@ -30,6 +30,9 @@ use layra_core::{
 use std::collections::HashMap;
 use thiserror::Error;
 
+mod class;
+mod er;
+mod pie;
 mod sequence;
 mod state;
 
@@ -73,6 +76,18 @@ pub fn parse_document_lenient(source: &str) -> (Document, Vec<ParseError>) {
     if header.starts_with("stateDiagram") {
         let (graph, warnings) = state::parse_lenient(&lines[1..]);
         return (Document::Graph(graph), warnings);
+    }
+    if header.starts_with("classDiagram") {
+        let (graph, warnings) = class::parse_lenient(&lines[1..]);
+        return (Document::Graph(graph), warnings);
+    }
+    if header.starts_with("erDiagram") {
+        let (graph, warnings) = er::parse_lenient(&lines[1..]);
+        return (Document::Graph(graph), warnings);
+    }
+    if let Some(rest) = header.strip_prefix("pie") {
+        let (chart, warnings) = pie::parse_lenient(rest, &lines[1..]);
+        return (Document::Pie(chart), warnings);
     }
     let (graph, warnings) = Parser::new(source).run_lenient();
     (Document::Graph(graph), warnings)
@@ -234,6 +249,7 @@ impl<'a> Parser<'a> {
                     kind: op.kind,
                     points: vec![],
                     label_pos: None,
+                    end_labels: None,
                 });
             }
 

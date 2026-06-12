@@ -39,6 +39,18 @@ Fast enough to re-render on every keystroke.
 | `layra-render-svg` | SVG with the editorial theme: role-colored borders, cluster pills, shape library |
 | `layra-wasm` | `render(source, dark) -> svg` for the browser |
 
+## Diagram types
+
+| Type | Status | Notes |
+|---|---|---|
+| `flowchart` / `graph` | ✅ | shapes, roles, icons, subgraphs, A* edge routing |
+| `sequenceDiagram` | ✅ | activations, autonumber, notes, frames, rect blocks |
+| `stateDiagram-v2` | ✅ | pseudo-states, composite states, transitions |
+| `classDiagram` | ✅ | compartments, UML markers (inheritance/composition/aggregation), cardinalities |
+| `erDiagram` | ✅ | attribute blocks, crow's-foot cardinality labels |
+| `pie` | ✅ | title, showData, percentage labels, legend |
+| `gantt` | ⏳ | next |
+
 ## Syntax
 
 ```text

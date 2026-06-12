@@ -21,6 +21,7 @@ fn edge(a: NodeId, b: NodeId) -> Edge {
         kind: EdgeKind::Arrow,
         points: vec![],
         label_pos: None,
+        end_labels: None,
     }
 }
 

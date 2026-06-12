@@ -18,6 +18,7 @@ fn edge(a: layra_core::NodeId, b: layra_core::NodeId) -> Edge {
         kind: EdgeKind::Arrow,
         points: vec![],
         label_pos: None,
+        end_labels: None,
     }
 }
 

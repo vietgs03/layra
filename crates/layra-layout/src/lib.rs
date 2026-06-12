@@ -100,6 +100,7 @@ mod tests {
             kind: EdgeKind::Arrow,
             points: vec![],
             label_pos: None,
+            end_labels: None,
         }
     }
 

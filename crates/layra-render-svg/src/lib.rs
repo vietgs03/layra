@@ -7,6 +7,7 @@
 //! colored title pills, thin neutral edges.
 
 mod fmt;
+mod pie;
 mod sequence;
 mod shapes;
 mod theme;
@@ -15,6 +16,7 @@ use layra_core::{EdgeKind, EdgeStyle, Graph};
 use layra_icons::IconRegistry;
 use std::fmt::Write;
 
+pub use pie::render_pie;
 pub use sequence::render_sequence;
 pub use theme::Theme;
 
@@ -66,11 +68,26 @@ pub fn render_with_icons(graph: &Graph, theme: &Theme, icons: Option<&IconRegist
 }
 
 fn write_defs(svg: &mut String, theme: &Theme) {
+    let e = theme.edge;
+    let bg = theme.node_fill;
+    svg.push_str("<defs>");
     let _ = write!(
         svg,
-        r#"<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="{}"/></marker></defs>"#,
-        theme.edge
+        r#"<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="{e}"/></marker>"#
     );
+    let _ = write!(
+        svg,
+        r#"<marker id="triangle" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="11" markerHeight="11" orient="auto-start-reverse"><path d="M1 1L11 6L1 11z" fill="{bg}" stroke="{e}" stroke-width="1.2"/></marker>"#
+    );
+    let _ = write!(
+        svg,
+        r#"<marker id="diamond-filled" viewBox="0 0 14 10" refX="1" refY="5" markerWidth="13" markerHeight="9" orient="auto"><path d="M1 5L7 1L13 5L7 9z" fill="{e}"/></marker>"#
+    );
+    let _ = write!(
+        svg,
+        r#"<marker id="diamond-open" viewBox="0 0 14 10" refX="1" refY="5" markerWidth="13" markerHeight="9" orient="auto"><path d="M1 5L7 1L13 5L7 9z" fill="{bg}" stroke="{e}" stroke-width="1.2"/></marker>"#
+    );
+    svg.push_str("</defs>");
 }
 
 fn write_subgraph(svg: &mut String, sg: &layra_core::Subgraph, theme: &Theme) {
@@ -144,12 +161,38 @@ fn write_edge(svg: &mut String, edge: &layra_core::Edge, theme: &Theme) {
             r#" marker-end="url(#arrow)" marker-start="url(#arrow)""#.to_string()
         }
         EdgeKind::Open => String::new(),
+        EdgeKind::Triangle => r#" marker-end="url(#triangle)""#.to_string(),
+        EdgeKind::DiamondFilled => r#" marker-start="url(#diamond-filled)""#.to_string(),
+        EdgeKind::DiamondOpen => r#" marker-start="url(#diamond-open)""#.to_string(),
     };
     let _ = write!(
         svg,
         r#"<path d="{d}" fill="none" stroke="{}" stroke-width="{width}"{dash}{markers}/>"#,
         theme.edge
     );
+
+    // Endpoint labels (ER cardinality / UML multiplicities): small text
+    // offset a fixed distance along the first/last segment.
+    if let Some((src_label, dst_label)) = &edge.end_labels {
+        let place = |out: &mut String, a: layra_core::Point, b: layra_core::Point, text: &str| {
+            if text.is_empty() {
+                return;
+            }
+            let len = ((b.x - a.x).powi(2) + (b.y - a.y).powi(2)).sqrt().max(1.0);
+            let t = (18.0 / len).min(0.4);
+            let x = a.x + (b.x - a.x) * t;
+            let y = a.y + (b.y - a.y) * t - 7.0;
+            let _ = write!(
+                out,
+                r#"<text x="{x:.1}" y="{y:.1}" font-size="11" fill="{}" text-anchor="middle">{}</text>"#,
+                theme.edge_label,
+                escape(text)
+            );
+        };
+        let pts = &edge.points;
+        place(svg, pts[0], pts[1], src_label);
+        place(svg, pts[pts.len() - 1], pts[pts.len() - 2], dst_label);
+    }
 
     if let (Some(label), Some(pos)) = (&edge.label, edge.label_pos) {
         let w = label.len() as f32 * 7.0 + 12.0;
@@ -176,9 +219,13 @@ fn write_node(
     let role_color = theme.role_color(node.role);
     shapes::write_shape(svg, node, role_color, theme);
 
-    let c = node.rect.center();
+    // Compartmented node (UML class / ER entity): title strip + sections.
+    if !node.sections.is_empty() {
+        write_compartments(svg, node, theme);
+        return;
+    }
 
-    // Icon block above the label (when the icon resolves in the registry).
+    let c = node.rect.center();
     let icon_key = node
         .icon
         .as_deref()
@@ -222,6 +269,50 @@ fn write_node(
             text_start + i as f32 * line_h,
             escape(line)
         );
+    }
+}
+
+/// UML-class-style node: bold title strip, horizontal separators, and
+/// left-aligned monospaced compartment lines. The text-measure stage
+/// already sized `node.rect` to fit (see measure_graph's sections branch).
+fn write_compartments(svg: &mut String, node: &layra_core::Node, theme: &Theme) {
+    let r = node.rect;
+    const TITLE_H: f32 = 30.0;
+    const LINE_H: f32 = 17.0;
+    const PAD_X: f32 = 10.0;
+
+    // Title strip.
+    let _ = write!(
+        svg,
+        r#"<text x="{:.1}" y="{:.1}" font-size="13.5" font-weight="700" fill="{}" text-anchor="middle" dominant-baseline="central">{}</text>"#,
+        r.center().x,
+        r.y + TITLE_H / 2.0,
+        theme.text,
+        escape(&node.label)
+    );
+
+    let mut y = r.y + TITLE_H;
+    for section in &node.sections {
+        // Separator above each compartment.
+        let _ = write!(
+            svg,
+            r#"<line x1="{:.1}" y1="{y:.1}" x2="{:.1}" y2="{y:.1}" stroke="{}" stroke-width="1"/>"#,
+            r.x,
+            r.right(),
+            theme.cluster_stroke
+        );
+        for line in section.split('\n') {
+            y += LINE_H;
+            let _ = write!(
+                svg,
+                r#"<text x="{:.1}" y="{:.1}" font-size="12" font-family="ui-monospace, 'SF Mono', Menlo, monospace" fill="{}" dominant-baseline="central">{}</text>"#,
+                r.x + PAD_X,
+                y - LINE_H / 2.0 + 2.0,
+                theme.edge_label,
+                escape(line)
+            );
+        }
+        y += 6.0;
     }
 }
 

@@ -98,6 +98,24 @@ pub const ICON_GAP: f32 = 5.0;
 /// so they add height, not width.
 pub fn measure_graph(graph: &mut Graph, opts: &TextOptions) {
     for node in &mut graph.nodes {
+        // Compartmented node (UML class / ER entity): title strip + one
+        // block per section; width fits the longest line anywhere.
+        if !node.sections.is_empty() {
+            const TITLE_H: f32 = 30.0;
+            const LINE_H: f32 = 17.0;
+            let mut w = measure_line(&node.label, opts.font_size) + 28.0;
+            let mut h = TITLE_H;
+            for section in &node.sections {
+                for line in section.split('\n') {
+                    w = w.max(measure_line(line, 12.0) + 24.0);
+                    h += LINE_H;
+                }
+                h += 6.0;
+            }
+            node.size = Size::new(w.max(110.0).ceil(), h.ceil());
+            continue;
+        }
+
         let text = measure_label(&node.label, opts);
         let icon_h = if node.icon.is_some() {
             ICON_SIZE + ICON_GAP

@@ -37,6 +37,10 @@ pub struct Node {
     pub role: ComponentRole,
     /// Optional icon reference, e.g. `logos:postgresql`.
     pub icon: Option<String>,
+    /// Extra compartments below the label (UML class fields/methods,
+    /// ER attributes). Each entry is one compartment; lines via `\n`.
+    #[serde(default)]
+    pub sections: Vec<String>,
     /// Measured label size; filled by the text-measure stage.
     pub size: Size,
     /// Final position; filled by the layout stage.
@@ -52,6 +56,12 @@ pub enum EdgeKind {
     Arrow,
     Open,
     Bidirectional,
+    /// UML inheritance: hollow triangle at the target.
+    Triangle,
+    /// UML composition: filled diamond at the source.
+    DiamondFilled,
+    /// UML aggregation: hollow diamond at the source.
+    DiamondOpen,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,6 +75,10 @@ pub struct Edge {
     pub points: Vec<Point>,
     /// Position for the edge label; filled by the routing stage.
     pub label_pos: Option<Point>,
+    /// Small labels at the source/target ends (ER cardinality like `||`,
+    /// `o{`). Rendered near the endpoints, not the middle.
+    #[serde(default)]
+    pub end_labels: Option<(String, String)>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -160,6 +174,7 @@ impl Node {
             shape: NodeShape::default(),
             role: ComponentRole::default(),
             icon: None,
+            sections: Vec::new(),
             size: Size::default(),
             rect: Rect::default(),
             parent: None,
@@ -184,6 +199,7 @@ mod tests {
             kind: EdgeKind::Arrow,
             points: vec![],
             label_pos: None,
+            end_labels: None,
         });
         assert_eq!(g.node_by_name("b"), Some(b));
         assert_eq!(g.edges.len(), 1);

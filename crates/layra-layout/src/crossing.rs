@@ -8,6 +8,7 @@ use crate::LayoutGraph;
 
 pub(crate) fn minimize(lg: &mut LayoutGraph, max_sweeps: usize) {
     if lg.layers.len() < 2 {
+        enforce_cluster_contiguity(lg);
         return;
     }
 
@@ -37,6 +38,56 @@ pub(crate) fn minimize(lg: &mut LayoutGraph, max_sweeps: usize) {
         if !changed {
             break;
         }
+    }
+
+    enforce_cluster_contiguity(lg);
+}
+
+/// Subgraph-aware constraint: members of the same cluster must be adjacent
+/// within each layer, or the cluster rect will swallow whatever node sits
+/// between them. Stable regroup: each cluster block moves to the position
+/// of its first member; relative order inside and outside is preserved.
+fn enforce_cluster_contiguity(lg: &mut LayoutGraph) {
+    use std::collections::HashMap;
+
+    for layer in &mut lg.layers {
+        if layer.len() < 3 {
+            continue;
+        }
+        // Quick check: is any cluster split across the layer?
+        let mut last_seen: HashMap<u32, usize> = HashMap::new();
+        let mut split = false;
+        for (i, &n) in layer.iter().enumerate() {
+            if let Some(c) = lg.cluster[n] {
+                if let Some(&prev) = last_seen.get(&c) {
+                    if i - prev > 1 {
+                        split = true;
+                        break;
+                    }
+                }
+                last_seen.insert(c, i);
+            }
+        }
+        if !split {
+            continue;
+        }
+
+        // Rebuild: walk the layer; at a cluster's first member, splice in
+        // every member of that cluster (preserving their relative order).
+        let mut rebuilt = Vec::with_capacity(layer.len());
+        let mut emitted: HashMap<u32, bool> = HashMap::new();
+        for &n in layer.iter() {
+            match lg.cluster[n] {
+                Some(c) => {
+                    if !emitted.get(&c).copied().unwrap_or(false) {
+                        emitted.insert(c, true);
+                        rebuilt.extend(layer.iter().copied().filter(|&m| lg.cluster[m] == Some(c)));
+                    }
+                }
+                None => rebuilt.push(n),
+            }
+        }
+        *layer = rebuilt;
     }
 }
 

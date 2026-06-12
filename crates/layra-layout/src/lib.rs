@@ -13,6 +13,7 @@
 //! Input: a [`Graph`] whose nodes already carry measured [`Size`]s.
 //! Output: the same graph with every node's `rect` filled in.
 
+mod bk;
 mod crossing;
 mod layering;
 mod position;
@@ -60,6 +61,8 @@ pub(crate) struct LayoutGraph {
     pub layers: Vec<Vec<usize>>,
     /// final x center, y center per node
     pub pos: Vec<(f32, f32)>,
+    /// innermost cluster per node (virtual nodes inherit None)
+    pub cluster: Vec<Option<u32>>,
 }
 
 /// Lay out `graph` in place: fills `node.rect`, `subgraph.rect`, and seeds

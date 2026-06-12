@@ -1,11 +1,10 @@
 //! Phase 5: coordinate assignment + writing results back to the IR graph.
 //!
-//! Cross-axis positions start from a packed layout, then relax toward the
-//! barycenter of neighbors for a few rounds while preserving order and
-//! minimum gaps. This approximates Brandes-Köpf alignment quality at a
-//! fraction of the implementation cost; BK is a planned drop-in upgrade.
+//! Cross-axis positions come from Brandes-Köpf alignment (see `bk.rs`),
+//! giving straight virtual chains and tight, balanced columns. A safety
+//! pass restores minimum gaps in the rare degenerate case.
 
-use crate::{LayoutGraph, LayoutOptions};
+use crate::{bk, LayoutGraph, LayoutOptions};
 use layra_core::{Direction, Graph, Point, Rect};
 
 /// Compute (main-axis, cross-axis) center coordinates for every node.
@@ -32,45 +31,24 @@ pub(crate) fn assign_coordinates(lg: &mut LayoutGraph, options: &LayoutOptions) 
         }
     }
 
-    // -- Cross axis: initial packed positions. --
-    for layer in &lg.layers {
-        let mut cursor = 0.0f32;
-        for &i in layer {
-            let w = lg.sizes[i].0.max(8.0); // virtual nodes get a slim slot
-            lg.pos[i].0 = cursor + w / 2.0;
-            cursor += w + options.node_spacing;
-        }
+    // -- Cross axis: Brandes-Köpf four-pass alignment. --
+    let widths: Vec<f32> = lg.sizes.iter().map(|s| s.0.max(8.0)).collect();
+    let xs = bk::assign_x(&bk::BkInput {
+        layers: &lg.layers,
+        pred: &lg.pred,
+        succ: &lg.succ,
+        widths: &widths,
+        real_count: lg.real_count,
+        spacing: options.node_spacing,
+    });
+    for (i, &x) in xs.iter().enumerate() {
+        lg.pos[i].0 = x;
     }
 
-    // -- Relaxation: pull nodes toward neighbor barycenters, then restore
-    //    order/gaps. Alternate sweep direction so positions propagate both
-    //    ways; weight virtual nodes 2x so long edge chains straighten.
-    for round in 0..4 {
-        let layer_indices: Vec<usize> = if round % 2 == 0 {
-            (0..lg.layers.len()).collect()
-        } else {
-            (0..lg.layers.len()).rev().collect()
-        };
-        for li in layer_indices {
-            let layer = &lg.layers[li];
-            for &i in layer {
-                let mut sum = 0.0f32;
-                let mut weight = 0.0f32;
-                let w_of = |j: usize| if j >= lg.real_count { 2.0 } else { 1.0 };
-                for &p in &lg.pred[i] {
-                    sum += lg.pos[p].0 * w_of(p);
-                    weight += w_of(p);
-                }
-                for &s in &lg.succ[i] {
-                    sum += lg.pos[s].0 * w_of(s);
-                    weight += w_of(s);
-                }
-                if weight > 0.0 {
-                    lg.pos[i].0 = sum / weight;
-                }
-            }
-            resolve_overlaps(layer, &lg.sizes, &mut lg.pos, options.node_spacing);
-        }
+    // Safety: BK guarantees separation within blocks; enforce the layer
+    // invariant once more to be robust against degenerate inputs.
+    for layer in &lg.layers {
+        resolve_overlaps(layer, &lg.sizes, &mut lg.pos, options.node_spacing);
     }
 }
 

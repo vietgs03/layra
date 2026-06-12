@@ -17,6 +17,10 @@ pub fn route(graph: &mut Graph) {
     // Spatial index: collision candidates per region instead of all nodes.
     let index = grid::SpatialGrid::build(&rects);
     let mut candidates: Vec<usize> = Vec::new();
+    // Global repair budget: quality routing for every edge on real
+    // diagrams (collisions are rare), graceful degradation on synthetic
+    // stress graphs where thousands of edges collide at once.
+    let mut repair_budget: u32 = 600;
 
     for edge in &mut graph.edges {
         let src = rects[edge.source.index()];
@@ -60,18 +64,25 @@ pub fn route(graph: &mut Graph) {
             })
         });
 
-        if collides {
+        if collides && repair_budget > 0 {
+            repair_budget -= 1;
             let region = bbox.inflate(120.0);
             index.query(&region, &mut candidates);
-            let obstacles: Vec<Rect> = candidates
-                .iter()
-                .filter(|&&i| i != edge.source.index() && i != edge.target.index())
-                .map(|&i| rects[i])
-                .collect();
-            let start = edge.points[0];
-            let goal = edge.points[edge.points.len() - 1];
-            if let Some(path) = orthogonal::route_around(start, goal, &obstacles) {
-                edge.points = path;
+            // Budget guard: in very dense neighborhoods the A* grid grows
+            // quadratically with obstacle count and the visual win shrinks
+            // (everything is packed anyway). Repair only sane regions.
+            const MAX_OBSTACLES: usize = 48;
+            if candidates.len() <= MAX_OBSTACLES {
+                let obstacles: Vec<Rect> = candidates
+                    .iter()
+                    .filter(|&&i| i != edge.source.index() && i != edge.target.index())
+                    .map(|&i| rects[i])
+                    .collect();
+                let start = edge.points[0];
+                let goal = edge.points[edge.points.len() - 1];
+                if let Some(path) = orthogonal::route_around(start, goal, &obstacles) {
+                    edge.points = path;
+                }
             }
         }
 

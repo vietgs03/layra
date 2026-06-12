@@ -74,6 +74,12 @@ pub(crate) fn build(graph: &Graph, options: &crate::LayoutOptions) -> LayoutGrap
         })
         .collect();
 
+    let cluster = graph
+        .nodes
+        .iter()
+        .map(|nd| nd.parent.map(|p| p.0))
+        .collect();
+
     LayoutGraph {
         succ,
         pred,
@@ -83,6 +89,7 @@ pub(crate) fn build(graph: &Graph, options: &crate::LayoutOptions) -> LayoutGrap
         edge_chains: Vec::new(),
         layers: Vec::new(),
         pos: Vec::new(),
+        cluster,
     }
 }
 
@@ -143,6 +150,7 @@ pub(crate) fn insert_virtual_nodes(lg: &mut LayoutGraph, graph: &Graph) {
                 let vid = lg.layer.len();
                 lg.layer.push(lg.layer[from] + step);
                 lg.sizes.push((0.0, 0.0));
+                lg.cluster.push(None);
                 succ.push(Vec::new());
                 pred.push(Vec::new());
                 succ[prev].push(vid);

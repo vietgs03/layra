@@ -68,11 +68,11 @@ cargo test                           # 18 tests across the pipeline
 ## Roadmap
 
 - [x] Orthogonal edge routing (localized A* with bend penalties, spatial-grid collision pruning)
-- [ ] Brandes-Köpf coordinate assignment
-- [ ] Subgraph-aware layout (cluster containment constraints)
-- [ ] Iconify icon rendering in nodes
+- [x] Brandes-Köpf coordinate assignment (4-pass alignment, type-1 conflict marking, block compaction)
+- [x] Subgraph-aware layout (cluster contiguity constraint within layers)
+- [x] Iconify icon rendering in nodes (inline SVG, ID namespacing, currentColor theming)
 - [ ] Shaped text measurement (`cosmic-text`) for CJK precision
-- [ ] WASM playground at layra.dev (editor + live preview + PNG/SVG export)
+- [x] WASM playground (editor + live preview + PNG/SVG export + share links) — https://vietgs03.github.io/layra/
 - [ ] `vello`/WebGPU renderer for 10k-node interactive canvases
 
 ## License

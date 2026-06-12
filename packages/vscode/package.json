@@ -1,0 +1,47 @@
+{
+  "name": "layra-diagrams",
+  "displayName": "Layra Diagrams",
+  "description": "Live preview for Mermaid-compatible diagrams, rendered by the Layra Rust/WASM engine in microseconds",
+  "version": "0.1.0",
+  "publisher": "vietgs03",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vietgs03/layra",
+    "directory": "packages/vscode"
+  },
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Visualization", "Programming Languages"],
+  "keywords": ["mermaid", "diagram", "flowchart", "preview"],
+  "activationEvents": ["onLanguage:mermaid", "onLanguage:markdown"],
+  "main": "./src/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "layra.openPreview",
+        "title": "Layra: Open Diagram Preview",
+        "icon": "$(open-preview)"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "layra.openPreview",
+          "when": "resourceExtname == .mmd || resourceLangId == mermaid",
+          "group": "navigation"
+        }
+      ]
+    },
+    "languages": [
+      {
+        "id": "mermaid",
+        "extensions": [".mmd", ".mermaid"],
+        "aliases": ["Mermaid", "mermaid"]
+      }
+    ]
+  },
+  "scripts": {
+    "build": "./build.sh",
+    "package": "vsce package --no-dependencies"
+  }
+}

@@ -6,3 +6,5 @@ playground/dist/
 playground/public/pkg/
 packages/core/dist/
 packages/core/*.tgz
+packages/vscode/media/
+packages/vscode/*.vsix

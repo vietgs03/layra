@@ -258,23 +258,37 @@ impl<'a> Parser<'a> {
     /// Parse `a --> b -.-> c` style chains, including standalone node decls.
     fn node_or_edge_chain(&mut self, ln: usize, line: &str) -> Result<(), ParseError> {
         let mut rest = line;
-        let mut prev: Option<(NodeId, EdgeOp)> = None;
+        // Mermaid `&` groups: `a & b --> c & d` creates the cross product
+        // (a->c, a->d, b->c, b->d). Each chain segment is a *group*.
+        let mut prev: Option<(Vec<NodeId>, EdgeOp)> = None;
 
         loop {
-            let (node_text, after) = split_node_segment(rest);
-            let node_id = self.intern_node(ln, node_text.trim())?;
+            let (group_text, after) = split_node_segment(rest);
 
-            if let Some((src, op)) = prev.take() {
-                self.graph.add_edge(Edge {
-                    source: src,
-                    target: node_id,
-                    label: op.label,
-                    style: op.style,
-                    kind: op.kind,
-                    points: vec![],
-                    label_pos: None,
-                    end_labels: None,
-                });
+            // Split the segment on `&` (outside brackets) into group members.
+            let mut group: Vec<NodeId> = Vec::new();
+            for part in split_amp(group_text) {
+                group.push(self.intern_node(ln, part.trim())?);
+            }
+
+            if let Some((sources, op)) = prev.take() {
+                // Invisible links (~~~) influence layout but draw nothing:
+                // represented as an edge with no kind/markers and a flag the
+                // renderer respects via EdgeStyle::Invisible.
+                for &src in &sources {
+                    for &dst in &group {
+                        self.graph.add_edge(Edge {
+                            source: src,
+                            target: dst,
+                            label: op.label.clone(),
+                            style: op.style,
+                            kind: op.kind,
+                            points: vec![],
+                            label_pos: None,
+                            end_labels: None,
+                        });
+                    }
+                }
             }
 
             let after = after.trim();
@@ -285,7 +299,7 @@ impl<'a> Parser<'a> {
                 line: ln,
                 message: format!("expected edge operator near '{after}'"),
             })?;
-            prev = Some((node_id, op));
+            prev = Some((group, op));
             rest = tail;
         }
     }
@@ -382,6 +396,30 @@ struct EdgeOp {
     label: Option<String>,
 }
 
+/// Split a chain segment on `&` outside any bracket/quote nesting:
+/// `a & b["x & y"]` → ["a", "b[\"x & y\"]"].
+fn split_amp(s: &str) -> Vec<&str> {
+    let bytes = s.as_bytes();
+    let mut parts = Vec::new();
+    let mut depth = 0i32;
+    let mut in_quote = false;
+    let mut start = 0usize;
+    for (i, &b) in bytes.iter().enumerate() {
+        match b as char {
+            '"' => in_quote = !in_quote,
+            '[' | '(' | '{' if !in_quote => depth += 1,
+            ']' | ')' | '}' if !in_quote => depth -= 1,
+            '&' if depth == 0 && !in_quote => {
+                parts.push(&s[start..i]);
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    parts.push(&s[start..]);
+    parts
+}
+
 /// Split off the leading node segment of a chain, stopping before an edge
 /// operator. Respects bracket nesting so `a["x --> y"]` parses correctly.
 fn split_node_segment(s: &str) -> (&str, &str) {
@@ -400,14 +438,15 @@ fn split_node_segment(s: &str) -> (&str, &str) {
                     i += 1;
                 }
             }
-            '-' | '=' | '<' if depth == 0 => {
-                // Potential edge operator start. Require at least `--`/`==`/`<-`.
+            '-' | '=' | '<' | '~' if depth == 0 => {
+                // Potential edge operator start. Require at least `--`/`==`/`<-`/`~~~`.
                 let rest = &s[i..];
                 if rest.starts_with("--")
                     || rest.starts_with("-.")
                     || rest.starts_with("==")
                     || rest.starts_with("<--")
                     || rest.starts_with("<==")
+                    || rest.starts_with("~~~")
                 {
                     return (&s[..i], rest);
                 }
@@ -431,6 +470,17 @@ fn parse_edge_op(s: &str) -> Option<(EdgeOp, &str)> {
         (false, s)
     };
 
+    if let Some(rest) = s.strip_prefix("~~~") {
+        // Invisible link: constrains layout, renders nothing.
+        return Some((
+            EdgeOp {
+                style: EdgeStyle::Invisible,
+                kind: EdgeKind::Open,
+                label: None,
+            },
+            rest,
+        ));
+    }
     let (style, after) = if let Some(rest) = s.strip_prefix("-.") {
         // -.-> or -.text.->  (we only support -.->)
         let rest = rest.strip_prefix('-')?;

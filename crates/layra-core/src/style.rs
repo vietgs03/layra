@@ -54,4 +54,6 @@ pub enum EdgeStyle {
     Dashed,
     Thick,
     Dotted,
+    /// Layout constraint only — renders nothing (`~~~` in Mermaid).
+    Invisible,
 }

@@ -128,8 +128,8 @@ fn write_subgraph(svg: &mut String, sg: &layra_core::Subgraph, theme: &Theme) {
 }
 
 fn write_edge(svg: &mut String, edge: &layra_core::Edge, theme: &Theme) {
-    if edge.points.len() < 2 {
-        return;
+    if edge.points.len() < 2 || edge.style == EdgeStyle::Invisible {
+        return; // invisible links constrain layout but draw nothing
     }
 
     // Path data is the hottest string in the renderer (one coordinate pair
@@ -195,6 +195,7 @@ fn write_edge(svg: &mut String, edge: &layra_core::Edge, theme: &Theme) {
         EdgeStyle::Thick => (3.0, ""),
         EdgeStyle::Dashed => (1.6, r#" stroke-dasharray="7 5""#),
         EdgeStyle::Dotted => (1.6, r#" stroke-dasharray="2 4""#),
+        EdgeStyle::Invisible => unreachable!("filtered above"),
     };
     let markers = match edge.kind {
         EdgeKind::Arrow => r#" marker-end="url(#arrow)""#.to_string(),

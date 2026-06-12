@@ -69,7 +69,7 @@ pub fn layout(graph: &mut Graph, options: &LayoutOptions) {
         return;
     }
 
-    let mut lg = layering::build(graph);
+    let mut lg = layering::build(graph, options);
     layering::assign_layers(&mut lg);
     layering::insert_virtual_nodes(&mut lg, graph);
     crossing::minimize(&mut lg, options.max_sweeps);

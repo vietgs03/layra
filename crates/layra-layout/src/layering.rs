@@ -5,7 +5,7 @@ use layra_core::{Direction, Graph};
 
 /// Build the working graph and break cycles with a DFS: any edge that closes
 /// a cycle (back edge) is reversed for layout purposes only.
-pub(crate) fn build(graph: &Graph) -> LayoutGraph {
+pub(crate) fn build(graph: &Graph, options: &crate::LayoutOptions) -> LayoutGraph {
     let n = graph.nodes.len();
     let mut succ = vec![Vec::new(); n];
     let mut pred = vec![Vec::new(); n];
@@ -53,15 +53,23 @@ pub(crate) fn build(graph: &Graph) -> LayoutGraph {
 
     // Sizes live in abstract (cross, main) space: for horizontal layouts the
     // main axis is x, so width/height swap. `position::apply` maps back.
+    //
+    // Cluster members get their size inflated by the cluster padding so the
+    // post-hoc subgraph rect (drawn around true node sizes) never overlaps
+    // neighboring non-member nodes — the cheap version of dagre's border
+    // nodes.
     let horizontal = matches!(graph.direction, Direction::LeftRight | Direction::RightLeft);
+    let pad2 = options.cluster_padding * 2.0;
     let sizes = graph
         .nodes
         .iter()
         .map(|nd| {
+            let pad = if nd.parent.is_some() { pad2 } else { 0.0 };
+            let (w, h) = (nd.size.width + pad, nd.size.height + pad);
             if horizontal {
-                (nd.size.height, nd.size.width)
+                (h, w)
             } else {
-                (nd.size.width, nd.size.height)
+                (w, h)
             }
         })
         .collect();

@@ -100,8 +100,16 @@ pub fn measure_graph(graph: &mut Graph, opts: &TextOptions) {
             0.0
         };
         let (fx, fy) = shape_factor(node.shape);
-        let w = ((text.width + icon_w) * fx + opts.padding_x * 2.0).max(opts.min_node_width);
-        let h = (text.height.max(ICON_SIZE) * fy + opts.padding_y * 2.0).max(opts.min_node_height);
+        let mut w = ((text.width + icon_w) * fx + opts.padding_x * 2.0).max(opts.min_node_width);
+        let mut h =
+            (text.height.max(ICON_SIZE) * fy + opts.padding_y * 2.0).max(opts.min_node_height);
+        // Circles render with radius = max(w, h)/2, so layout must reserve a
+        // square box or the drawn circle bleeds into rank spacing.
+        if node.shape == NodeShape::Circle {
+            let side = w.max(h);
+            w = side;
+            h = side;
+        }
         node.size = Size::new(w.ceil(), h.ceil());
     }
 }

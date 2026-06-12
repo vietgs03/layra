@@ -37,6 +37,12 @@ pub(crate) fn serve() -> ! {
             "initialize" => Some(initialize_result()),
             "notifications/initialized" | "initialized" => None, // notification, no reply
             "tools/list" => Some(tools_list()),
+            // Optional capabilities we don't provide: respond with empty
+            // lists instead of -32601 — several clients log method-not-found
+            // as a hard error and disable the server.
+            "resources/list" => Some(serde_json::json!({ "resources": [] })),
+            "resources/templates/list" => Some(serde_json::json!({ "resourceTemplates": [] })),
+            "prompts/list" => Some(serde_json::json!({ "prompts": [] })),
             "tools/call" => Some(tools_call(req.get("params"))),
             "ping" => Some(serde_json::json!({})),
             _ => {
@@ -159,6 +165,14 @@ fn render(source: &str, dark: bool, path: Option<&str>) -> Result<String, String
 
     match path {
         Some(p) => {
+            // Agents routinely target docs/diagrams/x.svg in fresh repos;
+            // create intermediate directories instead of failing.
+            if let Some(parent) = std::path::Path::new(p).parent() {
+                if !parent.as_os_str().is_empty() {
+                    std::fs::create_dir_all(parent)
+                        .map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
+                }
+            }
             std::fs::write(p, &svg).map_err(|e| format!("cannot write {p}: {e}"))?;
             Ok(format!("wrote {p} ({} bytes){warning_note}", svg.len()))
         }

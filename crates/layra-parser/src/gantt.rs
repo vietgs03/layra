@@ -116,6 +116,11 @@ fn parse_task(
                     } else {
                         end = Some(d);
                     }
+                } else if looks_like_date(part) {
+                    // `2026-13-45` parses as *shaped* like a date but with
+                    // out-of-range fields; silently ignoring it would put
+                    // the bar at the epoch. Reject the whole task instead.
+                    return None;
                 } else if start.is_none() && id.is_none() && is_task_id(part) {
                     id = Some(part.to_string());
                 }
@@ -154,6 +159,15 @@ fn parse_duration(s: &str) -> Option<i64> {
         "m" => Some(n * 30),
         _ => None,
     }
+}
+
+/// Shaped like a date (`\d+-\d+-\d+`) regardless of field validity.
+fn looks_like_date(s: &str) -> bool {
+    let parts: Vec<&str> = s.split('-').collect();
+    parts.len() == 3
+        && parts
+            .iter()
+            .all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))
 }
 
 /// `YYYY-MM-DD` → civil days since 1970-01-01 (Howard Hinnant's algorithm).

@@ -112,3 +112,32 @@ fn mindmap_timeline_journey_git_end_to_end() {
         }
     }
 }
+
+#[test]
+fn unclosed_sequence_frame_is_auto_closed_with_warning() {
+    let (svg, warnings) =
+        layra_wasm::render_svg_lenient("sequenceDiagram\n  loop forever\n  A->>B: hi", false)
+            .unwrap();
+    assert!(svg.contains(">loop<"), "frame must still be drawn");
+    assert_eq!(warnings.len(), 1);
+    assert!(warnings[0].contains("unclosed frame"));
+}
+
+#[test]
+fn invalid_gantt_date_warns_instead_of_epoch_bar() {
+    let (svg, warnings) = layra_wasm::render_svg_lenient(
+        "gantt\n  section S\n  Bad :2026-13-45, 5d\n  Good :2026-01-01, 3d",
+        false,
+    )
+    .unwrap();
+    assert!(svg.contains("Good"));
+    assert!(!svg.contains("Bad"), "invalid-date task must be rejected");
+    assert_eq!(warnings.len(), 1);
+}
+
+#[test]
+fn crlf_sources_parse_cleanly() {
+    let src = "flowchart LR\r\n  a[\"Hello\"] --> b[\"World\"]\r\n";
+    let svg = layra_wasm::render_svg(src, false).unwrap();
+    assert!(svg.contains("Hello") && svg.contains("World"));
+}

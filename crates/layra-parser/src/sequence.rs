@@ -30,6 +30,26 @@ pub(crate) fn parse_lenient(lines: &[(usize, &str)]) -> (SequenceDiagram, Vec<Pa
             warnings.push(e);
         }
     }
+
+    // Unclosed frames would silently vanish in the renderer (its frame
+    // stack only draws on FrameEnd). Auto-close and tell the author.
+    let opens = d
+        .items
+        .iter()
+        .filter(|i| matches!(i, SeqItem::FrameStart { .. }))
+        .count();
+    let closes = d
+        .items
+        .iter()
+        .filter(|i| matches!(i, SeqItem::FrameEnd))
+        .count();
+    for _ in closes..opens {
+        d.items.push(SeqItem::FrameEnd);
+        warnings.push(ParseError::Syntax {
+            line: lines.last().map_or(0, |&(ln, _)| ln),
+            message: "unclosed frame (loop/alt/opt/par/rect) — auto-closed at end".into(),
+        });
+    }
     (d, warnings)
 }
 

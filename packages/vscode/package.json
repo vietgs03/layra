@@ -2,7 +2,7 @@
   "name": "layra-diagrams",
   "displayName": "Layra Diagrams",
   "description": "Live preview for Mermaid-compatible diagrams, rendered by the Layra Rust/WASM engine in microseconds",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "vietgs03",
   "license": "MIT",
   "repository": {

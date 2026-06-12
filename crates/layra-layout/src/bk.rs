@@ -245,6 +245,7 @@ fn one_pass(
     let delta =
         |a: usize, b: usize| -> f32 { (input.widths[a] + input.widths[b]) / 2.0 + input.spacing };
 
+    #[allow(clippy::too_many_arguments)] // recursive helper mirrors the paper's signature
     fn place_block(
         v: usize,
         x: &mut [f32],

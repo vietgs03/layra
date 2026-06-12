@@ -15,11 +15,16 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+mod mcp;
+mod watch;
+
 const USAGE: &str = "\
 layra — Mermaid-compatible diagram renderer (Rust)
 
 USAGE:
   layra render <input.mmd>... [-o <out.svg>] [--dark] [--check] [--icons <pack.json>]...
+  layra watch <dir> [--dark]      re-render .mmd files on change
+  layra mcp                       Model Context Protocol server (stdio)
   layra --version
   layra --help
 
@@ -40,6 +45,12 @@ fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
         Some("render") => render_cmd(&args[1..]),
+        Some("watch") => {
+            let dir = args.get(1).map(String::as_str).unwrap_or(".");
+            let dark = args.iter().any(|a| a == "--dark");
+            watch::watch(dir, dark)
+        }
+        Some("mcp") => mcp::serve(),
         Some("--version" | "-V") => {
             println!("layra {}", env!("CARGO_PKG_VERSION"));
             ExitCode::SUCCESS

@@ -125,6 +125,21 @@ cargo test                           # full pipeline test suite
 
 MIT
 
+## AI agents (MCP)
+
+Layra is an MCP server — Claude Code, Cursor, Zed, and friends can
+validate and render the diagrams they generate, fixing their own syntax
+errors before you ever see them:
+
+```bash
+claude mcp add layra -- layra mcp
+```
+
+Tools: `validate_diagram` (per-line errors for the agent's fix loop) and
+`render_diagram` (SVG to disk). Plus `layra watch docs/` for editors
+without MCP and `layra render --check` as a CI gate.
+See [docs/AGENTS.md](docs/AGENTS.md).
+
 ## Consuming from JS / TypeScript
 
 Two integration levels, both from the same WASM bundle:

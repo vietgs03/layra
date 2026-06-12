@@ -25,6 +25,7 @@ name = "layra-cli"
 version = "0.1.0"
 dependencies = [
  "layra-wasm",
+ "serde_json",
 ]
 
 [[package]]

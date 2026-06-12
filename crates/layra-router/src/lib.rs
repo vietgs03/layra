@@ -86,10 +86,42 @@ pub fn route(graph: &mut Graph) {
             }
         }
 
-        // Label at geometric midpoint of the polyline.
-        if edge.label.is_some() {
-            edge.label_pos = Some(polyline_midpoint(&edge.points));
+        // Label placement happens in a second pass (needs all routed paths).
+    }
+
+    place_labels(graph);
+}
+
+/// Place edge labels offset perpendicular to the path so text never sits
+/// on the arrow line; stagger labels of edges sharing the same node pair
+/// (A->B and B->A) to opposite sides so they don't collide either.
+fn place_labels(graph: &mut Graph) {
+    use std::collections::HashMap;
+
+    // Count labeled edges per unordered node pair to detect parallels.
+    let mut seen: HashMap<(u32, u32), usize> = HashMap::new();
+
+    for edge in &mut graph.edges {
+        if edge.label.is_none() || edge.points.len() < 2 || edge.source == edge.target {
+            continue; // self-loops position their own label
         }
+        let key = (
+            edge.source.0.min(edge.target.0),
+            edge.source.0.max(edge.target.0),
+        );
+        let ordinal = *seen.entry(key).and_modify(|c| *c += 1).or_insert(0);
+
+        let (mid, dir) = polyline_midpoint_dir(&edge.points);
+        // Unit normal to the path direction.
+        let len = (dir.x * dir.x + dir.y * dir.y).sqrt().max(0.001);
+        let (nx, ny) = (-dir.y / len, dir.x / len);
+        // First label goes one side, second the other, third further out.
+        let side = if ordinal.is_multiple_of(2) { 1.0 } else { -1.0 };
+        let dist = 12.0 + (ordinal / 2) as f32 * 16.0;
+        edge.label_pos = Some(Point::new(
+            mid.x + nx * side * dist,
+            mid.y + ny * side * dist,
+        ));
     }
 }
 
@@ -171,7 +203,9 @@ fn clip_to_rect(rect: Rect, from: Point, to: Point) -> Point {
     Point::new(from.x + dx * t, from.y + dy * t)
 }
 
-fn polyline_midpoint(points: &[Point]) -> Point {
+/// Midpoint of the polyline by arc length, plus the direction vector of
+/// the segment containing it (for perpendicular label offsets).
+fn polyline_midpoint_dir(points: &[Point]) -> (Point, Point) {
     let total: f32 = points
         .windows(2)
         .map(|w| ((w[1].x - w[0].x).powi(2) + (w[1].y - w[0].y).powi(2)).sqrt())
@@ -181,14 +215,18 @@ fn polyline_midpoint(points: &[Point]) -> Point {
         let seg = ((w[1].x - w[0].x).powi(2) + (w[1].y - w[0].y).powi(2)).sqrt();
         if seg >= remaining && seg > 0.0 {
             let f = remaining / seg;
-            return Point::new(
-                w[0].x + (w[1].x - w[0].x) * f,
-                w[0].y + (w[1].y - w[0].y) * f,
+            return (
+                Point::new(
+                    w[0].x + (w[1].x - w[0].x) * f,
+                    w[0].y + (w[1].y - w[0].y) * f,
+                ),
+                Point::new(w[1].x - w[0].x, w[1].y - w[0].y),
             );
         }
         remaining -= seg;
     }
-    points[points.len() / 2]
+    let mid = points[points.len() / 2];
+    (mid, Point::new(1.0, 0.0))
 }
 
 #[cfg(test)]
@@ -206,7 +244,8 @@ mod tests {
     #[test]
     fn midpoint_of_straight_line() {
         let pts = [Point::new(0.0, 0.0), Point::new(10.0, 0.0)];
-        let m = polyline_midpoint(&pts);
+        let (m, dir) = polyline_midpoint_dir(&pts);
         assert!((m.x - 5.0).abs() < 0.01);
+        assert!(dir.x > 0.0 && dir.y == 0.0);
     }
 }

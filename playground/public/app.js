@@ -306,6 +306,7 @@ function doRender() {
     lastGoodSvg = svg;
     swapSvg(svg);
     if (!userTouchedView) fitToView();
+    resolveMissingIcons(src);
     if (warnings.length) {
       status.textContent = `rendered, ${warnings.length} skipped — ${warnings[0]}`;
       status.className = "status warn";
@@ -319,6 +320,50 @@ function doRender() {
   } catch (e) {
     reportError(String(e.message ?? e));
   }
+}
+
+/* On-demand icon resolution: when the source references an icon that the
+   local pack doesn't have, fetch it from the public Iconify API once and
+   re-render. Failures are cached so we never refetch a bad name. */
+const iconAttempts = new Set();
+async function resolveMissingIcons(src) {
+  const wanted = new Set();
+  for (const m of src.matchAll(/\{icon:([a-z0-9-]+):([a-z0-9-]+)\}/g)) {
+    wanted.add(`${m[1]}:${m[2]}`);
+  }
+  for (const m of src.matchAll(/\/icons\/([a-z0-9]+)-([a-z0-9-]+)\.svg/g)) {
+    wanted.add(`${m[1]}:${m[2]}`);
+  }
+  const missing = [...wanted].filter((k) => !iconAttempts.has(k));
+  if (!missing.length) return;
+  missing.forEach((k) => iconAttempts.add(k));
+
+  // Group by prefix: one API call per pack.
+  const byPrefix = new Map();
+  for (const key of missing) {
+    const [prefix, name] = key.split(":");
+    (byPrefix.get(prefix) ?? byPrefix.set(prefix, []).get(prefix)).push(name);
+  }
+  let added = 0;
+  await Promise.all([...byPrefix].map(async ([prefix, names]) => {
+    try {
+      const res = await fetch(
+        `https://api.iconify.design/${prefix}.json?icons=${names.join(",")}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!data?.icons) return;
+      const pack = { icons: {} };
+      for (const [name, icon] of Object.entries(data.icons)) {
+        pack.icons[`${prefix}:${name}`] = {
+          body: icon.body,
+          width: icon.width ?? data.width ?? 16,
+          height: icon.height ?? data.height ?? 16,
+        };
+      }
+      added += load_icons(JSON.stringify(pack));
+    } catch { /* offline or unknown pack: fall back to text-only nodes */ }
+  }));
+  if (added > 0) scheduleRender();
 }
 
 const svgParser = new DOMParser();

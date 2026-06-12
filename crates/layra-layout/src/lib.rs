@@ -14,6 +14,7 @@
 //! Output: the same graph with every node's `rect` filled in.
 
 mod bk;
+mod components;
 mod crossing;
 mod layering;
 mod position;
@@ -67,7 +68,23 @@ pub(crate) struct LayoutGraph {
 
 /// Lay out `graph` in place: fills `node.rect`, `subgraph.rect`, and seeds
 /// each edge's `points` with the layered waypoints (the router refines them).
+///
+/// Weakly connected components are laid out independently and packed along
+/// the cross axis — otherwise their layers interleave and cluster rects
+/// from different components overlap.
 pub fn layout(graph: &mut Graph, options: &LayoutOptions) {
+    if graph.nodes.is_empty() {
+        return;
+    }
+
+    if components::layout_componentwise(graph, options) {
+        return;
+    }
+    layout_single(graph, options);
+}
+
+/// Layout for a graph known to be a single connected component.
+pub(crate) fn layout_single(graph: &mut Graph, options: &LayoutOptions) {
     if graph.nodes.is_empty() {
         return;
     }

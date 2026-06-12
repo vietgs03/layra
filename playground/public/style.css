@@ -81,6 +81,8 @@ main { display: flex; flex: 1; min-height: 0; }
 }
 .status.ok { color: var(--ok); }
 .status.err { color: var(--error); }
+.status.warn { color: #b45309; }
+:root.dark .status.warn { color: #fbbf24; }
 
 .preview-pane { overflow: auto; background: var(--bg); }
 #preview { display: grid; place-items: center; min-height: 100%; padding: 24px; }

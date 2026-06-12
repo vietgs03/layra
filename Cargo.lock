@@ -86,6 +86,7 @@ dependencies = [
  "layra-render-svg",
  "layra-router",
  "layra-text",
+ "serde_json",
  "wasm-bindgen",
 ]
 

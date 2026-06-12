@@ -58,3 +58,34 @@ fn renders_blog_nat_with_icons() {
     assert!(svg.contains("Your laptop"));
     assert!(svg.contains("192.168.1.42:51000"));
 }
+
+#[test]
+fn lenient_mode_survives_corrupted_paste() {
+    // Reproduces a real user paste where line breaks were lost and the
+    // classDef tail got mangled into garbage tokens.
+    let src = r#"flowchart LR
+    subgraph DED ["Dedicated LB"]
+        C2["Client"]:::client
+        VIP["Load balancer"]:::highlight
+        C2 --> VIP
+    end
+    classDef highlight fill:#f3ebff,strokBackend C"]oup phckend C-4" he:1.5px;
+    highlighcl kend C"]64748bckend C-4" he:1.75px;
+    highlighc kend C"]oup phckend C-4" he:1.75px;"#;
+
+    // Strict mode: fails (first bad line wins).
+    assert!(layra_wasm::render_svg(src, false).is_err());
+
+    // Lenient: renders the valid 2-node subgraph, reports skipped lines.
+    let (svg, warnings) = layra_wasm::render_svg_lenient(src, false).unwrap();
+    assert!(svg.contains("Load balancer"));
+    assert!(svg.contains("Client"));
+    assert_eq!(warnings.len(), 2, "got: {warnings:?}");
+    assert!(warnings[0].contains("line 8"), "got: {}", warnings[0]);
+}
+
+#[test]
+fn lenient_mode_errors_when_nothing_parses() {
+    let res = layra_wasm::render_svg_lenient("flowchart LR\n###garbage###", false);
+    assert!(res.is_err());
+}

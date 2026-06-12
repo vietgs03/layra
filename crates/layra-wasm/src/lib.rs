@@ -16,26 +16,49 @@ fn registry() -> &'static Mutex<layra_icons::IconRegistry> {
 
 /// Full pipeline: diagram source in, SVG string out. Dispatches on diagram
 /// type — flowcharts and state diagrams run the graph pipeline; sequence
-/// diagrams use the dedicated deterministic layout.
+/// diagrams use the dedicated deterministic layout. Strict: the first
+/// unparseable line is an error.
 pub fn render_svg(source: &str, dark: bool) -> Result<String, String> {
-    let doc = layra_parser::parse_document(source).map_err(|e| e.to_string())?;
+    let (svg, warnings) = render_svg_lenient(source, dark)?;
+    if let Some(w) = warnings.into_iter().next() {
+        return Err(w);
+    }
+    Ok(svg)
+}
+
+/// Lenient pipeline: skips unparseable lines (mangled copy-paste, partial
+/// edits) and renders everything that did parse, returning per-line
+/// warnings. Hard-fails only when nothing usable was found.
+pub fn render_svg_lenient(source: &str, dark: bool) -> Result<(String, Vec<String>), String> {
+    let (doc, parse_warnings) = layra_parser::parse_document_lenient(source);
+    let warnings: Vec<String> = parse_warnings.iter().map(|e| e.to_string()).collect();
+
     let theme = if dark {
         layra_render_svg::Theme::dark()
     } else {
         layra_render_svg::Theme::light()
     };
 
-    match doc {
+    let svg = match doc {
         layra_core::Document::Graph(mut graph) => {
+            if graph.nodes.is_empty() && !warnings.is_empty() {
+                return Err(warnings.into_iter().next().unwrap());
+            }
             layra_text::measure_graph(&mut graph, &layra_text::TextOptions::default());
             layra_layout::layout(&mut graph, &layra_layout::LayoutOptions::default());
             layra_router::route(&mut graph);
             let reg = registry().lock().map_err(|e| e.to_string())?;
             let icons = (!reg.is_empty()).then_some(&*reg);
-            Ok(layra_render_svg::render_with_icons(&graph, &theme, icons))
+            layra_render_svg::render_with_icons(&graph, &theme, icons)
         }
-        layra_core::Document::Sequence(seq) => Ok(layra_render_svg::render_sequence(&seq, &theme)),
-    }
+        layra_core::Document::Sequence(seq) => {
+            if seq.participants.is_empty() && !warnings.is_empty() {
+                return Err(warnings.into_iter().next().unwrap());
+            }
+            layra_render_svg::render_sequence(&seq, &theme)
+        }
+    };
+    Ok((svg, warnings))
 }
 
 /// Load an Iconify-format icon pack JSON. Returns the number of icons
@@ -53,6 +76,16 @@ pub fn load_icon_pack(json: &str) -> Result<usize, String> {
 #[wasm_bindgen]
 pub fn render(source: &str, dark: bool) -> Result<String, JsError> {
     render_svg(source, dark).map_err(|e| JsError::new(&e))
+}
+
+/// JS-facing lenient entry point. Returns JSON:
+/// `{"svg": "...", "warnings": ["line N: ...", ...]}`.
+/// Throws only when nothing in the source could be parsed.
+#[wasm_bindgen]
+pub fn render_lenient(source: &str, dark: bool) -> Result<String, JsError> {
+    let (svg, warnings) = render_svg_lenient(source, dark).map_err(|e| JsError::new(&e))?;
+    serde_json::to_string(&serde_json::json!({ "svg": svg, "warnings": warnings }))
+        .map_err(|e| JsError::new(&e.to_string()))
 }
 
 /// JS-facing icon pack loader.

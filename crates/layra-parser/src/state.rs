@@ -18,7 +18,16 @@ use layra_core::{
 };
 use std::collections::HashMap;
 
+#[cfg(test)]
 pub(crate) fn parse(lines: &[(usize, &str)]) -> Result<Graph, ParseError> {
+    let (g, warnings) = parse_lenient(lines);
+    match warnings.into_iter().next() {
+        Some(w) => Err(w),
+        None => Ok(g),
+    }
+}
+
+pub(crate) fn parse_lenient(lines: &[(usize, &str)]) -> (Graph, Vec<ParseError>) {
     let mut p = StateParser {
         graph: Graph::new(Direction::TopBottom),
         by_name: HashMap::new(),
@@ -26,11 +35,14 @@ pub(crate) fn parse(lines: &[(usize, &str)]) -> Result<Graph, ParseError> {
         subgraph_stack: Vec::new(),
         in_note: false,
     };
+    let mut warnings = Vec::new();
 
     for &(ln, line) in lines {
-        p.line(ln, line)?;
+        if let Err(e) = p.line(ln, line) {
+            warnings.push(e);
+        }
     }
-    Ok(p.graph)
+    (p.graph, warnings)
 }
 
 struct StateParser {

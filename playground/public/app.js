@@ -2,7 +2,7 @@
 // Renders on every input event — the engine is fast enough that the only
 // throttle we need is requestAnimationFrame coalescing.
 
-import init, { render, load_icons } from "./pkg/layra_wasm.js";
+import init, { render_lenient, load_icons } from "./pkg/layra_wasm.js";
 
 const DEFAULT_SOURCE = `flowchart LR
   laptop["{icon:mdi:laptop} Your laptop\\n192.168.1.42:51000"]:::client
@@ -96,14 +96,22 @@ function doRender() {
   localStorage.setItem(AUTOSAVE_KEY, src);
   const t0 = performance.now();
   try {
-    const svg = render(src, dark);
+    const { svg, warnings } = JSON.parse(render_lenient(src, dark));
     const dt = performance.now() - t0;
     perf.textContent = dt < 1 ? `${(dt * 1000).toFixed(0)} µs` : `${dt.toFixed(1)} ms`;
     lastGoodSvg = svg;
     swapSvg(svg);
-    status.textContent = "ok";
-    status.className = "status ok";
-    highlightLine(null);
+    if (warnings.length) {
+      // Rendered, but some lines were skipped — amber warning state.
+      status.textContent = `rendered with ${warnings.length} skipped line(s) — ${warnings[0]}`;
+      status.className = "status warn";
+      const m = /line (\d+)/.exec(warnings[0]);
+      highlightLine(m ? Number(m[1]) : null);
+    } else {
+      status.textContent = "ok";
+      status.className = "status ok";
+      highlightLine(null);
+    }
   } catch (e) {
     // Keep last good render on screen; surface the error instead.
     reportError(String(e.message ?? e));

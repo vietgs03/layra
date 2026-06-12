@@ -42,6 +42,19 @@ pub enum ParseError {
 /// Parse any supported diagram type, dispatching on the header line:
 /// `flowchart`/`graph`, `sequenceDiagram`, `stateDiagram`/`stateDiagram-v2`.
 pub fn parse_document(source: &str) -> Result<Document, ParseError> {
+    let (doc, warnings) = parse_document_lenient(source);
+    match warnings.into_iter().next() {
+        // Strict mode: surface the first problem as a hard error.
+        Some(w) => Err(w),
+        None => Ok(doc),
+    }
+}
+
+/// Lenient parse: unparseable lines are skipped and reported as warnings
+/// instead of failing the whole document. Real-world sources are often
+/// mangled by copy-paste (joined lines, truncated tails) — rendering the
+/// 95% that parses beats a blank screen.
+pub fn parse_document_lenient(source: &str) -> (Document, Vec<ParseError>) {
     let lines: Vec<(usize, &str)> = source
         .lines()
         .enumerate()
@@ -50,17 +63,19 @@ pub fn parse_document(source: &str) -> Result<Document, ParseError> {
         .collect();
 
     let Some(&(_, header)) = lines.first() else {
-        return Ok(Document::Graph(Graph::default()));
+        return (Document::Graph(Graph::default()), Vec::new());
     };
 
     if header == "sequenceDiagram" {
-        return Ok(Document::Sequence(sequence::parse(&lines[1..])?));
+        let (seq, warnings) = sequence::parse_lenient(&lines[1..]);
+        return (Document::Sequence(seq), warnings);
     }
     if header.starts_with("stateDiagram") {
-        return Ok(Document::Graph(state::parse(&lines[1..])?));
+        let (graph, warnings) = state::parse_lenient(&lines[1..]);
+        return (Document::Graph(graph), warnings);
     }
-    // flowchart / graph / headerless default to the flowchart parser.
-    Ok(Document::Graph(parse(source)?))
+    let (graph, warnings) = Parser::new(source).run_lenient();
+    (Document::Graph(graph), warnings)
 }
 
 /// Parse flowchart source only (legacy entry point; prefer
@@ -113,6 +128,32 @@ impl<'a> Parser<'a> {
             self.statement(ln, line)?;
         }
         Ok(self.graph)
+    }
+
+    /// Like [`run`], but collects per-line errors instead of bailing.
+    fn run_lenient(mut self) -> (Graph, Vec<ParseError>) {
+        let lines = std::mem::take(&mut self.lines);
+        let mut iter = lines.into_iter();
+        let mut warnings = Vec::new();
+
+        let mut pending: Option<(usize, &str)> = None;
+        if let Some((ln, line)) = iter.next() {
+            if let Some(rest) = line
+                .strip_prefix("flowchart")
+                .or_else(|| line.strip_prefix("graph"))
+            {
+                self.graph.direction = parse_direction(rest.trim());
+            } else {
+                pending = Some((ln, line));
+            }
+        }
+
+        for (ln, line) in pending.into_iter().chain(iter) {
+            if let Err(e) = self.statement(ln, line) {
+                warnings.push(e);
+            }
+        }
+        (self.graph, warnings)
     }
 
     fn statement(&mut self, ln: usize, line: &str) -> Result<(), ParseError> {

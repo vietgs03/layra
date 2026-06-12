@@ -11,14 +11,26 @@ use layra_core::{
     FrameKind, NotePosition, SeqArrow, SeqItem, SeqMessage, SeqNote, SequenceDiagram,
 };
 
+#[cfg(test)]
 pub(crate) fn parse(lines: &[(usize, &str)]) -> Result<SequenceDiagram, ParseError> {
+    let (d, warnings) = parse_lenient(lines);
+    match warnings.into_iter().next() {
+        Some(w) => Err(w),
+        None => Ok(d),
+    }
+}
+
+pub(crate) fn parse_lenient(lines: &[(usize, &str)]) -> (SequenceDiagram, Vec<ParseError>) {
     let mut d = SequenceDiagram::default();
     let mut counter = 0u32;
+    let mut warnings = Vec::new();
 
     for &(ln, line) in lines {
-        parse_line(&mut d, &mut counter, ln, line)?;
+        if let Err(e) = parse_line(&mut d, &mut counter, ln, line) {
+            warnings.push(e);
+        }
     }
-    Ok(d)
+    (d, warnings)
 }
 
 fn parse_line(

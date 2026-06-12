@@ -1,25 +1,132 @@
-// Layra playground: editor left, live preview right.
-// Renders on every input event — the engine is fast enough that the only
-// throttle we need is requestAnimationFrame coalescing.
+// Layra playground: editor left, pannable/zoomable preview right.
+// Renders on every input event, coalesced via requestAnimationFrame.
 
 import init, { render_lenient, load_icons } from "./pkg/layra_wasm.js";
 
-const DEFAULT_SOURCE = `flowchart LR
+const TEMPLATES = {
+  flowchart: `flowchart LR
   laptop["{icon:mdi:laptop} Your laptop\\n192.168.1.42:51000"]:::client
-  router["{icon:mdi:router-wireless} Router (NAT)\\n translation table"]:::highlight
+  router["{icon:mdi:router-wireless} Router (NAT)\\ntranslation table"]:::highlight
   target["{icon:mdi:web} example.com\\n93.184.216.34:443"]:::external
 
   laptop -->|outbound| router
   router ==>|rewritten src| target
   target -.->|reply| router
   router -.->|rewritten dst| laptop
-`;
+`,
+  sequence: `sequenceDiagram
+  autonumber
+  participant C as Client
+  participant S as Server
+
+  rect rgb(219, 234, 254)
+  Note over C,S: TLS 1.3 handshake (1 RTT)
+  C->>+S: ClientHello
+  S-->>-C: ServerHello · cert · Finished
+  end
+  C->>S: HTTP GET / (encrypted)
+  S-->>C: HTTP 200 OK
+`,
+  state: `stateDiagram-v2
+  direction LR
+  [*] --> Closed
+  Closed --> Open : failures > threshold
+  Open --> HalfOpen : after cool-down
+  HalfOpen --> Closed : probe succeeds
+  HalfOpen --> Open : probe fails
+`,
+  class: `classDiagram
+  direction LR
+  class Animal {
+    +String name
+    +int age
+    +eat()
+    +sleep()
+  }
+  class Dog {
+    +bark()
+  }
+  class Cat {
+    +meow()
+  }
+  Animal <|-- Dog
+  Animal <|-- Cat
+  Dog "1" --> "*" Bone : buries
+`,
+  er: `erDiagram
+  CUSTOMER ||--o{ ORDER : places
+  ORDER ||--|{ LINE_ITEM : contains
+  CUSTOMER {
+    string name
+    string email UK
+  }
+  ORDER {
+    int id PK
+    string status
+  }
+`,
+  gantt: `gantt
+  title Release plan
+  dateFormat YYYY-MM-DD
+  section Build
+  Engine        :done,   eng,  2026-01-01, 30d
+  Playground    :active, play, after eng, 14d
+  section Ship
+  Beta          :crit,   beta, after play, 7d
+  Launch        :milestone, 2026-03-01, 0d
+`,
+  pie: `pie showData title Language share
+  "Rust" : 62
+  "TypeScript" : 28
+  "Other" : 10
+`,
+  mindmap: `mindmap
+  root((Layra))
+    Engine
+      Layout
+      Routing
+      Text
+    Playground
+      Editor
+      Export
+    Docs
+`,
+  timeline: `timeline
+  title Project history
+  section 2026 H1
+  Jan : idea : first commit
+  Feb : eleven diagram types
+  section 2026 H2
+  Jul : v1.0
+`,
+  journey: `journey
+  title Deploy day
+  section Build
+  Write code: 5: Dev
+  Fix CI: 2: Dev
+  section Release
+  Ship it: 4: Dev, PM
+  Celebrate: 5: Team
+`,
+  git: `gitGraph
+  commit id: "init"
+  commit
+  branch develop
+  commit id: "feat"
+  commit
+  checkout main
+  commit
+  merge develop tag: "v1.0"
+  commit
+`,
+};
 
 const AUTOSAVE_KEY = "layra-playground-source";
 
 const $ = (id) => document.getElementById(id);
 const editor = $("editor");
 const preview = $("preview");
+const viewport = $("viewport");
 const status = $("status");
 const perf = $("perf");
 
@@ -27,7 +134,106 @@ let dark = matchMedia("(prefers-color-scheme: dark)").matches;
 let lastGoodSvg = "";
 let rafPending = false;
 
-// --- base64url helpers (chunked: spread blows the arg limit past ~64k) ---
+/* ---------------- pan & zoom ---------------- */
+
+const view = { x: 40, y: 40, scale: 1 };
+let userTouchedView = false; // stop auto-fit once the user pans/zooms
+
+function applyView() {
+  preview.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.scale})`;
+  $("zoom-level").textContent = `${Math.round(view.scale * 100)}%`;
+}
+
+function zoomAt(cx, cy, factor) {
+  const next = Math.min(8, Math.max(0.1, view.scale * factor));
+  const k = next / view.scale;
+  view.x = cx - (cx - view.x) * k;
+  view.y = cy - (cy - view.y) * k;
+  view.scale = next;
+  userTouchedView = true;
+  applyView();
+}
+
+function fitToView() {
+  const svgEl = preview.querySelector("svg");
+  if (!svgEl) return;
+  const vw = viewport.clientWidth;
+  const vh = viewport.clientHeight;
+  const w = svgEl.viewBox.baseVal.width || svgEl.clientWidth;
+  const h = svgEl.viewBox.baseVal.height || svgEl.clientHeight;
+  if (!w || !h) return;
+  const scale = Math.min((vw - 64) / w, (vh - 64) / h, 2);
+  view.scale = Math.max(0.1, scale);
+  view.x = (vw - w * view.scale) / 2;
+  view.y = (vh - h * view.scale) / 2;
+  userTouchedView = false;
+  applyView();
+}
+
+viewport.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  const rect = viewport.getBoundingClientRect();
+  const cx = e.clientX - rect.left;
+  const cy = e.clientY - rect.top;
+  if (e.ctrlKey || e.metaKey || !e.shiftKey) {
+    // Wheel = zoom (the natural default for a canvas).
+    zoomAt(cx, cy, e.deltaY < 0 ? 1.12 : 1 / 1.12);
+  } else {
+    view.x -= e.deltaX;
+    view.y -= e.deltaY;
+    userTouchedView = true;
+    applyView();
+  }
+}, { passive: false });
+
+let panState = null;
+viewport.addEventListener("pointerdown", (e) => {
+  if (e.button !== 0) return;
+  panState = { px: e.clientX, py: e.clientY, vx: view.x, vy: view.y };
+  viewport.classList.add("panning");
+  viewport.setPointerCapture(e.pointerId);
+});
+viewport.addEventListener("pointermove", (e) => {
+  if (!panState) return;
+  view.x = panState.vx + (e.clientX - panState.px);
+  view.y = panState.vy + (e.clientY - panState.py);
+  userTouchedView = true;
+  applyView();
+});
+viewport.addEventListener("pointerup", () => {
+  panState = null;
+  viewport.classList.remove("panning");
+});
+
+$("zoom-in").addEventListener("click", () =>
+  zoomAt(viewport.clientWidth / 2, viewport.clientHeight / 2, 1.25));
+$("zoom-out").addEventListener("click", () =>
+  zoomAt(viewport.clientWidth / 2, viewport.clientHeight / 2, 1 / 1.25));
+$("zoom-fit").addEventListener("click", fitToView);
+
+/* ---------------- split pane ---------------- */
+
+const splitter = $("splitter");
+const editorPane = $("editor-pane");
+splitter.addEventListener("pointerdown", (e) => {
+  splitter.classList.add("dragging");
+  splitter.setPointerCapture(e.pointerId);
+  const move = (ev) => {
+    const w = Math.min(Math.max(ev.clientX, 240), window.innerWidth - 320);
+    editorPane.style.setProperty("--editor-w", `${w}px`);
+    editorPane.style.width = `${w}px`;
+  };
+  const up = () => {
+    splitter.classList.remove("dragging");
+    splitter.removeEventListener("pointermove", move);
+    splitter.removeEventListener("pointerup", up);
+  };
+  splitter.addEventListener("pointermove", move);
+  splitter.addEventListener("pointerup", up);
+});
+
+/* ---------------- encode / decode share links ---------------- */
+
 function bytesToB64url(bytes) {
   let s = "";
   for (let i = 0; i < bytes.length; i += 0x8000) {
@@ -39,9 +245,6 @@ function b64urlToBytes(b64url) {
   const b64 = b64url.replaceAll("-", "+").replaceAll("_", "/");
   return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 }
-
-// --- URL hash <-> source. Deflate-compressed (prefix "c:") with plain
-// base64url fallback for older links/browsers. ---
 async function encodeSource(src) {
   const raw = new TextEncoder().encode(src);
   if (typeof CompressionStream !== "undefined") {
@@ -64,6 +267,8 @@ async function decodeSource(hash) {
   }
 }
 
+/* ---------------- rendering ---------------- */
+
 function applyTheme() {
   document.documentElement.classList.toggle("dark", dark);
 }
@@ -71,12 +276,10 @@ function applyTheme() {
 function reportError(message) {
   status.textContent = message;
   status.className = "status err";
-  // Highlight the offending line if the engine reported one.
   const m = /line (\d+)/.exec(message);
   highlightLine(m ? Number(m[1]) : null);
 }
 
-// Crude but effective gutter: tint the editor background at the error line.
 function highlightLine(line) {
   if (line == null) {
     editor.style.backgroundImage = "";
@@ -94,6 +297,7 @@ function doRender() {
   rafPending = false;
   const src = editor.value;
   localStorage.setItem(AUTOSAVE_KEY, src);
+  markActiveTemplate(src);
   const t0 = performance.now();
   try {
     const { svg, warnings } = JSON.parse(render_lenient(src, dark));
@@ -101,9 +305,9 @@ function doRender() {
     perf.textContent = dt < 1 ? `${(dt * 1000).toFixed(0)} µs` : `${dt.toFixed(1)} ms`;
     lastGoodSvg = svg;
     swapSvg(svg);
+    if (!userTouchedView) fitToView();
     if (warnings.length) {
-      // Rendered, but some lines were skipped — amber warning state.
-      status.textContent = `rendered with ${warnings.length} skipped line(s) — ${warnings[0]}`;
+      status.textContent = `rendered, ${warnings.length} skipped — ${warnings[0]}`;
       status.className = "status warn";
       const m = /line (\d+)/.exec(warnings[0]);
       highlightLine(m ? Number(m[1]) : null);
@@ -113,13 +317,10 @@ function doRender() {
       highlightLine(null);
     }
   } catch (e) {
-    // Keep last good render on screen; surface the error instead.
     reportError(String(e.message ?? e));
   }
 }
 
-// Parse into a detached document, then swap nodes inside a persistent <svg>
-// root — keeps element identity stable so pan/zoom CSS transforms survive.
 const svgParser = new DOMParser();
 function swapSvg(svgText) {
   const doc = svgParser.parseFromString(svgText, "image/svg+xml");
@@ -133,7 +334,6 @@ function swapSvg(svgText) {
     preview.replaceChildren(fresh);
     return;
   }
-  // Sync attributes both ways: set new ones, drop stale ones.
   const freshNames = new Set([...fresh.attributes].map((a) => a.name));
   for (const { name } of [...current.attributes]) {
     if (!freshNames.has(name)) current.removeAttribute(name);
@@ -151,6 +351,41 @@ function scheduleRender() {
   }
 }
 
+/* ---------------- templates ---------------- */
+
+function detectType(src) {
+  const head = src.trimStart().split(/\s/, 1)[0] ?? "";
+  if (head.startsWith("flowchart") || head.startsWith("graph")) return "flowchart";
+  if (head === "sequenceDiagram") return "sequence";
+  if (head.startsWith("stateDiagram")) return "state";
+  if (head.startsWith("classDiagram")) return "class";
+  if (head.startsWith("erDiagram")) return "er";
+  if (head === "gantt") return "gantt";
+  if (head.startsWith("pie")) return "pie";
+  if (head === "mindmap") return "mindmap";
+  if (head === "timeline") return "timeline";
+  if (head === "journey") return "journey";
+  if (head.startsWith("gitGraph")) return "git";
+  return null;
+}
+
+function markActiveTemplate(src) {
+  const type = detectType(src);
+  for (const btn of $("templates").querySelectorAll("button")) {
+    btn.classList.toggle("active", btn.dataset.tpl === type);
+  }
+}
+
+$("templates").addEventListener("click", (e) => {
+  const tpl = e.target?.dataset?.tpl;
+  if (!tpl || !TEMPLATES[tpl]) return;
+  editor.value = TEMPLATES[tpl];
+  userTouchedView = false;
+  scheduleRender();
+});
+
+/* ---------------- export & share ---------------- */
+
 function download(filename, blob) {
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
@@ -167,11 +402,9 @@ function exportSvg() {
 function exportPng() {
   if (!lastGoodSvg) return;
   const svgEl = preview.querySelector("svg");
-  const scale = 2; // 2x for crisp output
+  const scale = 2;
   const w = Math.max(1, Math.round(svgEl.viewBox.baseVal.width * scale));
   const h = Math.max(1, Math.round(svgEl.viewBox.baseVal.height * scale));
-  // Firefox rasterizes blob-SVGs without intrinsic size as empty; the
-  // renderer emits width/height, but enforce it defensively anyway.
   let svgText = lastGoodSvg;
   if (!/<svg[^>]*\swidth=/.test(svgText)) {
     svgText = svgText.replace("<svg", `<svg width="${w / scale}" height="${h / scale}"`);
@@ -206,7 +439,6 @@ async function shareLink() {
     await navigator.clipboard.writeText(url);
     btn.textContent = "Copied!";
   } catch {
-    // Clipboard API needs HTTPS + focus; fall back to a manual prompt.
     prompt("Copy this link:", url);
     btn.textContent = "Link ready";
   }
@@ -218,40 +450,42 @@ async function loadFromHash() {
   const src = await decodeSource(location.hash.slice(1));
   if (src == null) return false;
   editor.value = src;
+  userTouchedView = false;
   scheduleRender();
   return true;
 }
 
+/* ---------------- boot ---------------- */
+
 async function main() {
   await init();
 
-  // Icon pack (extracted from blog.viethx.com usage): non-blocking-critical,
-  // but await it so the first render already has icons.
   try {
     const res = await fetch("./icons-blog.json");
-    if (res.ok) {
-      const n = load_icons(await res.text());
-      console.info(`layra: ${n} icons loaded`);
-    }
+    if (res.ok) load_icons(await res.text());
   } catch (e) {
     console.warn("layra: icon pack failed to load", e);
   }
 
   const fromHash = await loadFromHash();
   if (!fromHash) {
-    editor.value = localStorage.getItem(AUTOSAVE_KEY) ?? DEFAULT_SOURCE;
+    editor.value = localStorage.getItem(AUTOSAVE_KEY) ?? TEMPLATES.flowchart;
   }
   applyTheme();
   doRender();
+  fitToView();
 
   editor.addEventListener("input", scheduleRender);
   editor.addEventListener("scroll", () => {
-    if (status.classList.contains("err")) {
+    if (status.classList.contains("err") || status.classList.contains("warn")) {
       const m = /line (\d+)/.exec(status.textContent);
       highlightLine(m ? Number(m[1]) : null);
     }
   });
   window.addEventListener("hashchange", loadFromHash);
+  window.addEventListener("resize", () => {
+    if (!userTouchedView) fitToView();
+  });
 
   $("btn-theme").addEventListener("click", () => {
     dark = !dark;
@@ -262,7 +496,8 @@ async function main() {
   $("btn-svg").addEventListener("click", exportSvg);
   $("btn-png").addEventListener("click", exportPng);
 
-  // Tab indents, Shift+Tab outdents, Escape blurs (a11y: no keyboard trap).
+  // Keyboard: Tab/Shift+Tab indent in editor, Escape blurs;
+  // +/−/0 zoom when focus is outside the editor.
   editor.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
       editor.blur();
@@ -281,6 +516,15 @@ async function main() {
       editor.setRangeText("  ", s, end, "end");
     }
     scheduleRender();
+  });
+
+  window.addEventListener("keydown", (e) => {
+    if (document.activeElement === editor) return;
+    const center = [viewport.clientWidth / 2, viewport.clientHeight / 2];
+    if (e.key === "+" || e.key === "=") zoomAt(...center, 1.25);
+    else if (e.key === "-") zoomAt(...center, 1 / 1.25);
+    else if (e.key === "0") fitToView();
+    else if (e.key === "d" || e.key === "D") $("btn-theme").click();
   });
 }
 

@@ -7,6 +7,7 @@
   --accent: #3b82f6;
   --error: #dc2626;
   --ok: #059669;
+  --dots: #e8eaf0;
 }
 :root.dark {
   --bg: #0f1115;
@@ -14,6 +15,7 @@
   --border: #2d3340;
   --text: #e5e9f0;
   --dim: #9ca3af;
+  --dots: #1d2129;
 }
 
 * { box-sizing: border-box; }
@@ -29,33 +31,72 @@ body {
 header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 10px 16px;
+  gap: 14px;
+  padding: 8px 14px;
   border-bottom: 1px solid var(--border);
   flex: none;
+  flex-wrap: wrap;
 }
-.brand { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+.brand { display: flex; align-items: center; gap: 8px; font-size: 15px; flex: none; }
 .logo { color: var(--accent); }
-.tag { color: var(--dim); font-size: 12.5px; margin-left: 8px; }
+.tag { color: var(--dim); font-size: 12px; }
 #perf { font-variant-numeric: tabular-nums; }
 
-.actions { display: flex; gap: 8px; }
-button {
+.templates {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.templates::-webkit-scrollbar { display: none; }
+.templates button {
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 9px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dim);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.templates button:hover { color: var(--text); background: var(--panel); }
+.templates button.active { color: var(--accent); border-color: var(--border); background: var(--panel); }
+
+.actions { display: flex; gap: 6px; flex: none; }
+.actions button {
   font: inherit;
   font-size: 13px;
-  padding: 6px 12px;
+  padding: 5px 11px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--panel);
   color: var(--text);
   cursor: pointer;
 }
-button:hover { border-color: var(--accent); }
+.actions button:hover { border-color: var(--accent); }
 
 main { display: flex; flex: 1; min-height: 0; }
 
-.pane { flex: 1; min-width: 0; position: relative; }
-.editor-pane { border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+.pane { min-width: 0; position: relative; }
+.editor-pane {
+  display: flex;
+  flex-direction: column;
+  width: var(--editor-w, 44%);
+  flex: none;
+}
+
+#splitter {
+  flex: none;
+  width: 5px;
+  cursor: col-resize;
+  background: var(--border);
+  transition: background 0.15s;
+}
+#splitter:hover, #splitter.dragging { background: var(--accent); }
+
+.preview-pane { flex: 1; }
 
 #editor {
   flex: 1;
@@ -63,7 +104,7 @@ main { display: flex; flex: 1; min-height: 0; }
   border: 0;
   resize: none;
   outline: none;
-  padding: 16px;
+  padding: 14px 16px;
   font: 13.5px/1.55 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
   background: var(--bg);
   color: var(--text);
@@ -78,12 +119,67 @@ main { display: flex; flex: 1; min-height: 0; }
   font-family: Menlo, Consolas, monospace;
   border-top: 1px solid var(--border);
   background: var(--panel);
+  max-height: 64px;
+  overflow-y: auto;
 }
 .status.ok { color: var(--ok); }
 .status.err { color: var(--error); }
 .status.warn { color: #b45309; }
 :root.dark .status.warn { color: #fbbf24; }
 
-.preview-pane { overflow: auto; background: var(--bg); }
-#preview { display: grid; place-items: center; min-height: 100%; padding: 24px; }
-#preview svg { max-width: 100%; height: auto; }
+/* Pannable, zoomable canvas with a dot grid like draw.io */
+#viewport {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  cursor: grab;
+  background-image: radial-gradient(var(--dots) 1.2px, transparent 1.2px);
+  background-size: 22px 22px;
+}
+#viewport.panning { cursor: grabbing; }
+#preview {
+  position: absolute;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+#preview svg { display: block; }
+
+.zoom-controls {
+  position: absolute;
+  bottom: 14px;
+  right: 14px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+.zoom-controls button {
+  font: inherit;
+  font-size: 14px;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+.zoom-controls button:hover { background: var(--border); }
+#zoom-fit { width: auto; padding: 0 9px; font-size: 12px; }
+#zoom-level {
+  font-size: 11.5px;
+  color: var(--dim);
+  min-width: 40px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 760px) {
+  main { flex-direction: column; }
+  .editor-pane { width: 100% !important; height: 45%; }
+  #splitter { display: none; }
+}

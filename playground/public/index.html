@@ -10,23 +10,43 @@
 <header>
   <div class="brand">
     <span class="logo">◆</span> <strong>Layra</strong>
-    <span class="tag">Rust diagram engine · <span id="perf">—</span></span>
+    <span class="tag"><span id="perf">—</span></span>
+  </div>
+  <div class="templates" id="templates">
+    <button data-tpl="flowchart">Flowchart</button>
+    <button data-tpl="sequence">Sequence</button>
+    <button data-tpl="state">State</button>
+    <button data-tpl="class">Class</button>
+    <button data-tpl="er">ER</button>
+    <button data-tpl="gantt">Gantt</button>
+    <button data-tpl="pie">Pie</button>
+    <button data-tpl="mindmap">Mindmap</button>
+    <button data-tpl="timeline">Timeline</button>
+    <button data-tpl="journey">Journey</button>
+    <button data-tpl="git">Git</button>
   </div>
   <div class="actions">
-    <button id="btn-theme" title="Toggle dark mode">🌓</button>
+    <button id="btn-theme" title="Toggle dark mode (D)">🌓</button>
     <button id="btn-share" title="Copy shareable link">Share</button>
     <button id="btn-svg" title="Download SVG">SVG</button>
     <button id="btn-png" title="Download PNG">PNG</button>
   </div>
 </header>
 
-<main>
-  <section class="pane editor-pane">
+<main id="main">
+  <section class="pane editor-pane" id="editor-pane">
     <textarea id="editor" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
     <div id="status" class="status ok">ready</div>
   </section>
+  <div id="splitter" role="separator" aria-orientation="vertical" title="Drag to resize"></div>
   <section class="pane preview-pane" id="preview-pane">
-    <div id="preview"></div>
+    <div id="viewport"><div id="preview"></div></div>
+    <div class="zoom-controls">
+      <button id="zoom-out" title="Zoom out (−)">−</button>
+      <span id="zoom-level">100%</span>
+      <button id="zoom-in" title="Zoom in (+)">+</button>
+      <button id="zoom-fit" title="Fit to view (0)">Fit</button>
+    </div>
   </section>
 </main>
 

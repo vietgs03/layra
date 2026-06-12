@@ -1,0 +1,20 @@
+flowchart TB
+    REQ["<img src="/icons/mdi-tray-arrow-down.svg" alt="mdi:tray-arrow-down" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Incoming request"]:::highlight
+    TMO["<img src="/icons/mdi-timer-outline.svg" alt="mdi:timer-outline" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> ① Timeout budget<br/><span class='sub'>ctx.WithDeadline</span>"]:::step
+    RLT["<img src="/icons/mdi-speedometer.svg" alt="mdi:speedometer" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> ② Rate limiter<br/><span class='sub'>token bucket</span>"]:::step
+    BLK["<img src="/icons/mdi-wall.svg" alt="mdi:wall" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> ③ Bulkhead<br/><span class='sub'>per-dep pool</span>"]:::step
+    CB["<img src="/icons/mdi-electric-switch.svg" alt="mdi:electric-switch" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> ④ Circuit breaker<br/><span class='sub'>closed/open/half</span>"]:::step
+    RET["<img src="/icons/mdi-refresh.svg" alt="mdi:refresh" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> ⑤ Retry<br/><span class='sub'>backoff + jitter</span>"]:::step
+    CALL["<img src="/icons/mdi-server-network.svg" alt="mdi:server-network" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Downstream call"]:::ok
+    FALLBACK["<img src="/icons/mdi-alert-outline.svg" alt="mdi:alert-outline" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Fallback / 503<br/><span class='sub'>cached</span>"]:::warn
+
+    REQ --> TMO --> RLT --> BLK --> CB
+    CB -->|"closed"| RET --> CALL
+    CB -->|"open"| FALLBACK
+    CB -->|"half-open"| CALL
+
+    classDef highlight fill:#f3ebff,stroke:#7c3aed,stroke-width:1.5px,color:#4c1d95;
+
+classDef ok stroke:#16a34a,stroke-width:1.75px;
+classDef warn stroke:#d97706,stroke-width:1.75px;
+classDef step stroke:#3b6fd6,stroke-width:1.75px;

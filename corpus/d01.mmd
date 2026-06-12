@@ -1,0 +1,14 @@
+flowchart LR
+    laptop["<img src="/icons/mdi-laptop.svg" alt="mdi:laptop" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Your laptop<br/><span class='sub'>192.168.1.42:51000</span>"]:::client
+    router["<img src="/icons/mdi-router-wireless.svg" alt="mdi:router-wireless" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Router (NAT)<br/><span class='sub'>translation table</span>"]:::highlight
+    target["<img src="/icons/mdi-web.svg" alt="mdi:web" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> example.com<br/><span class='sub'>93.184.216.34:443</span>"]:::external
+
+    laptop -->|"outbound<br/>src 192.168.1.42:51000"| router
+    router ==>|"rewritten<br/>src 203.0.113.17:60321"| target
+    target -.->|"reply<br/>dst 203.0.113.17:60321"| router
+    router -.->|"rewritten<br/>dst 192.168.1.42:51000"| laptop
+
+    classDef highlight fill:#f3ebff,stroke:#7c3aed,stroke-width:1.5px,color:#4c1d95;
+
+classDef client stroke:#64748b,stroke-width:1.75px;
+classDef external stroke:#64748b,stroke-width:1.75px;

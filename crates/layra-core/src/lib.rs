@@ -13,8 +13,21 @@
 
 pub mod geometry;
 pub mod graph;
+pub mod sequence;
 pub mod style;
 
 pub use geometry::{Point, Rect, Size};
 pub use graph::{Direction, Edge, EdgeId, EdgeKind, Graph, Node, NodeId, Subgraph, SubgraphId};
+pub use sequence::{
+    FrameKind, NotePosition, Participant, ParticipantId, SeqArrow, SeqItem, SeqMessage, SeqNote,
+    SequenceDiagram,
+};
 pub use style::{ComponentRole, EdgeStyle, NodeShape};
+
+/// A parsed document: every diagram type Layra understands.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub enum Document {
+    /// Flowcharts and state diagrams (states map onto the graph pipeline).
+    Graph(Graph),
+    Sequence(SequenceDiagram),
+}

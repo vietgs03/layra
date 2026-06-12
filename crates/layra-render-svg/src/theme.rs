@@ -13,6 +13,10 @@ pub struct Theme {
     pub cluster_fill: &'static str,
     pub cluster_stroke: &'static str,
     pub cluster_title: &'static str,
+    pub note_fill: &'static str,
+    pub note_stroke: &'static str,
+    pub note_text: &'static str,
+    pub is_dark: bool,
 }
 
 impl Theme {
@@ -26,6 +30,10 @@ impl Theme {
             cluster_fill: "#fafbfc",
             cluster_stroke: "#c3c9d4",
             cluster_title: "#475569",
+            note_fill: "#fef9c3",
+            note_stroke: "#d9c84a",
+            note_text: "#5b5314",
+            is_dark: false,
         }
     }
 
@@ -39,6 +47,10 @@ impl Theme {
             cluster_fill: "#13161c",
             cluster_stroke: "#2d3340",
             cluster_title: "#64748b",
+            note_fill: "#2a2616",
+            note_stroke: "#6b5f1d",
+            note_text: "#d8c95a",
+            is_dark: true,
         }
     }
 

@@ -1,0 +1,35 @@
+flowchart LR
+    CL["<img src="/icons/mdi-laptop.svg" alt="mdi:laptop" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Client"]:::client -->|"HTTPS"| LB1
+
+    subgraph TERM_LB ["① Terminate at LB"]
+        direction TB
+        LB1["<img src="/icons/mdi-shield-check.svg" alt="mdi:shield-check" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> LB<br/><span class='sub'>holds cert + key</span>"]:::edge
+        B1["<img src="/icons/mdi-server-outline.svg" alt="mdi:server-outline" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Backend"]:::ok
+        LB1 -->|"HTTP / re-encrypt"| B1
+    end
+
+    subgraph TERM_BACK ["② Passthrough"]
+        direction TB
+        LB2["<img src="/icons/mdi-router-wireless.svg" alt="mdi:router-wireless" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> LB<br/><span class='sub'>L4, SNI-only</span>"]:::edge
+        B2["<img src="/icons/mdi-shield-check.svg" alt="mdi:shield-check" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Backend<br/><span class='sub'>holds cert + key</span>"]:::ok
+        LB2 -->|"HTTPS passthrough"| B2
+    end
+
+    subgraph TERM_MESH ["③ Mesh sidecar (mTLS)"]
+        direction TB
+        SC1["<img src="/icons/mdi-shield-lock.svg" alt="mdi:shield-lock" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Envoy sidecar"]:::edge
+        B3["<img src="/icons/mdi-server-outline.svg" alt="mdi:server-outline" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Backend"]:::ok
+        SC1 -->|"localhost plaintext"| B3
+        SC1 -.->|"mTLS to peers"| SC2["<img src="/icons/mdi-shield-lock.svg" alt="mdi:shield-lock" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> other sidecars"]:::edge
+    end
+
+    classDef clusterBlue fill:transparent,stroke:#3b82f6,stroke-dasharray:6 4
+    classDef clusterGreen fill:transparent,stroke:#16a34a,stroke-dasharray:6 4
+    classDef clusterPurple fill:transparent,stroke:#a855f7,stroke-dasharray:6 4
+    class TERM_LB clusterBlue
+    class TERM_BACK clusterGreen
+    class TERM_MESH clusterPurple
+
+classDef client stroke:#64748b,stroke-width:1.75px;
+classDef edge stroke:#3b82f6,stroke-width:1.75px;
+classDef ok stroke:#16a34a,stroke-width:1.75px;

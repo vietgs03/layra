@@ -1,0 +1,34 @@
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant S as Server
+
+    rect rgb(219, 234, 254)
+    Note over C,S: 1️⃣ Unary — classic request / response
+    C->>+S: GetProfile(id=42)
+    S-->>-C: UserProfile
+    end
+
+    rect rgb(220, 252, 231)
+    Note over C,S: 2️⃣ Server streaming — one request, many responses
+    C->>+S: WatchProfile(id=42)
+    S-->>C: UserProfile v1
+    S-->>C: UserProfile v2
+    S-->>-C: UserProfile v3 ...
+    end
+
+    rect rgb(254, 243, 199)
+    Note over C,S: 3️⃣ Client streaming — many requests, one summary
+    C->>+S: ImportUsers (user_1)
+    C->>S: ImportUsers (user_2)
+    C->>S: ImportUsers (user_3)
+    S-->>-C: ImportSummary (count=3)
+    end
+
+    rect rgb(237, 214, 255)
+    Note over C,S: 4️⃣ Bidirectional — full-duplex, interleaved
+    C->>+S: Chat (hello)
+    S-->>C: Chat (hi)
+    C->>S: Chat (how are you)
+    S-->>-C: Chat (good)
+    end

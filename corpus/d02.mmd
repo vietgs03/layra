@@ -1,0 +1,17 @@
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant S as Server
+
+    Note over C: state: CLOSED
+    Note over S: state: LISTEN
+    rect rgb(219, 234, 254)
+    C->>S: SYN · seq=x
+    activate S
+    Note over C: SYN_SENT
+    Note over S: SYN_RCVD
+    S-->>C: SYN·ACK · seq=y, ack=x+1
+    C->>S: ACK · ack=y+1
+    deactivate S
+    end
+    Note over C,S: ✅ ESTABLISHED — 1 full RTT before the first byte of payload

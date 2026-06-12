@@ -1,0 +1,27 @@
+graph LR
+    subgraph H11 ["HTTP/1.1 — many connections, serial"]
+        direction TB
+        C1["<img src="/icons/mdi-lan-connect.svg" alt="mdi:lan-connect" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> TCP #1<br/><span class='sub'>/index.html</span>"]:::bad
+        C2["<img src="/icons/mdi-lan-connect.svg" alt="mdi:lan-connect" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> TCP #2<br/><span class='sub'>/app.js</span>"]:::bad
+        C3["<img src="/icons/mdi-lan-connect.svg" alt="mdi:lan-connect" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> TCP #3<br/><span class='sub'>/style.css</span>"]:::bad
+        C4["<img src="/icons/mdi-lan-connect.svg" alt="mdi:lan-connect" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> TCP #4<br/><span class='sub'>/logo.png</span>"]:::bad
+    end
+
+    subgraph H2 ["HTTP/2 — one connection, multiplexed"]
+        direction TB
+        T["<img src="/icons/mdi-lan.svg" alt="mdi:lan" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> 1 TCP + TLS<br/><span class='sub'>shared</span>"]:::highlight
+        T --> S1["<img src="/icons/mdi-transit-connection-variant.svg" alt="mdi:transit-connection-variant" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> stream 1<br/><span class='sub'>/index.html</span>"]:::ok
+        T --> S2["<img src="/icons/mdi-transit-connection-variant.svg" alt="mdi:transit-connection-variant" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> stream 3<br/><span class='sub'>/app.js</span>"]:::ok
+        T --> S3["<img src="/icons/mdi-transit-connection-variant.svg" alt="mdi:transit-connection-variant" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> stream 5<br/><span class='sub'>/style.css</span>"]:::ok
+        T --> S4["<img src="/icons/mdi-transit-connection-variant.svg" alt="mdi:transit-connection-variant" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> stream 7<br/><span class='sub'>/logo.png</span>"]:::ok
+    end
+
+    classDef highlight fill:#f3ebff,stroke:#7c3aed,stroke-width:1.5px,color:#4c1d95;
+
+    classDef clusterRed fill:transparent,stroke:#dc2626,stroke-dasharray:6 4
+    classDef clusterGreen fill:transparent,stroke:#16a34a,stroke-dasharray:6 4
+    class H11 clusterRed
+    class H2 clusterGreen
+
+classDef ok stroke:#16a34a,stroke-width:1.75px;
+classDef bad stroke:#dc2626,stroke-width:1.75px;

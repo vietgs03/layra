@@ -1,0 +1,25 @@
+stateDiagram-v2
+    direction LR
+    [*] --> Closed
+
+    Closed --> Open : failures > threshold<br/>in rolling window
+    Open --> HalfOpen : after cool-down<br/>(e.g. 30s)
+    HalfOpen --> Closed : probe succeeds
+    HalfOpen --> Open : probe fails
+
+    note right of Closed
+        normal — calls go through
+        failure count incremented
+    end note
+    note right of Open
+        fail fast — no calls
+        return cached / fallback / 503
+    end note
+    note right of HalfOpen
+        let one probe through
+        decide based on result
+    end note
+
+    class Closed ok
+    class Open bad
+    class HalfOpen warn

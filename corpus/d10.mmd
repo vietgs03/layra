@@ -1,0 +1,27 @@
+sequenceDiagram
+    autonumber
+    participant C as Browser
+    participant S as Server
+
+    rect rgb(219, 234, 254)
+    Note over C,S: ① Open the stream — one HTTP request, never-ending response
+    C->>+S: GET /stream · Accept: text/event-stream
+    S-->>C: 200 OK · Content-Type: text/event-stream<br/>Cache-Control: no-store · Connection: keep-alive
+    end
+
+    rect rgb(220, 252, 231)
+    Note over C,S: ② Server pushes events whenever it wants
+    S-->>C: event: price · data: {BTC: 67123}
+    S-->>C: event: price · data: {BTC: 67140}
+    S-->>C: 💓 : heartbeat (comment line keeps proxies awake)
+    S-->>-C: event: price · data: {BTC: 67089}
+    end
+
+    rect rgb(254, 226, 226)
+    Note right of C: ⚠️ connection drops
+    end
+
+    rect rgb(254, 243, 199)
+    Note over C,S: ③ EventSource auto-reconnects with Last-Event-ID
+    C->>S: GET /stream · Last-Event-ID: 42
+    end

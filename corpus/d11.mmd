@@ -1,0 +1,29 @@
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant S as Server
+
+    rect rgb(219, 234, 254)
+    Note over C,S: ① HTTP upgrade — the only HTTP round-trip in a WS session
+    C->>+S: GET /ws HTTP/1.1<br/>Upgrade: websocket<br/>Sec-WebSocket-Key: x3JJ…<br/>Sec-WebSocket-Version: 13
+    S-->>-C: 🎉 101 Switching Protocols<br/>Upgrade: websocket<br/>Sec-WebSocket-Accept: hash(key + GUID)
+    end
+
+    rect rgb(220, 252, 231)
+    Note over C,S: ② Full-duplex frames — either side sends any time
+    C->>S: TEXT · {action: subscribe, room: 42}
+    S-->>C: TEXT · {msg: welcome}
+    S-->>C: 🔢 BINARY · 0xCAFE…
+    end
+
+    rect rgb(254, 243, 199)
+    Note over C,S: ③ Keep-alive control frames
+    C->>S: PING
+    S-->>C: PONG
+    end
+
+    rect rgb(254, 226, 226)
+    Note over C,S: ④ Graceful close
+    C->>S: CLOSE (1000 normal)
+    S-->>C: CLOSE (ack)
+    end

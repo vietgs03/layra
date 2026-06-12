@@ -1,0 +1,35 @@
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant D as DNS
+    participant S as Server :443
+
+    rect rgb(254, 249, 195)
+    Note over C,D: Phase 1 — DNS resolution
+    C->>D: query A example.com
+    activate D
+    D-->>C: 93.184.216.34
+    deactivate D
+    end
+
+    rect rgb(219, 234, 254)
+    Note over C,S: Phase 2 — TCP 3-way handshake
+    C->>S: SYN  seq=x
+    activate S
+    S-->>C: SYN·ACK  seq=y, ack=x+1
+    C->>S: ACK  ack=y+1
+    end
+
+    rect rgb(220, 252, 231)
+    Note over C,S: Phase 3 — TLS 1.3 handshake (1 RTT)
+    C->>S: ClientHello + key share
+    S-->>C: ServerHello + cert + Finished
+    Note over C,S: both sides derive the session key
+    end
+
+    rect rgb(233, 213, 255)
+    Note over C,S: Phase 4 — HTTP over TLS
+    C->>S: GET / HTTP/1.1
+    S-->>C: 200 OK · Content-Type: text/html
+    deactivate S
+    end

@@ -1,0 +1,44 @@
+sequenceDiagram
+    autonumber
+    participant A as Peer A
+    participant SIG as Signaling<br/>(your WS server)
+    participant ST as STUN
+    participant TN as TURN
+    participant B as Peer B
+
+    rect rgb(219, 234, 254)
+    Note over A,B: ① Signal (through your server — usually WebSocket)
+    A->>+SIG: offer (SDP)
+    SIG->>+B: offer (SDP)
+    B->>-SIG: answer (SDP)
+    SIG->>-A: answer (SDP)
+    end
+
+    rect rgb(254, 243, 199)
+    Note over A,B: ② ICE — discover reachable addresses
+    A->>+ST: "what's my public IP?"
+    ST-->>-A: 203.0.113.1:51000
+    A->>SIG: ICE candidate (host + reflexive)
+    SIG->>B: (forwarded)
+    B->>SIG: ICE candidate (its own)
+    SIG->>A: (forwarded)
+    end
+
+    rect rgb(220, 252, 231)
+    Note over A,B: ③ Connectivity check — try direct first
+    A-->>B: STUN binding
+    B-->>A: STUN binding reply
+    Note over A,B: ✅ direct path works → done
+    end
+
+    rect rgb(254, 226, 226)
+    Note over A,B: ④ Fallback: symmetric NAT blocks direct → TURN relay
+    A-->>TN: relay allocate
+    TN-->>B: relayed packet
+    end
+
+    rect rgb(233, 213, 255)
+    Note over A,B: ⑤ Media / data flow — end-to-end encrypted
+    A-->>B: 🎥 video · 🎤 audio · 📂 data channel<br/>(DTLS-SRTP or SCTP over DTLS, all over UDP)
+    B-->>A: 🎥 video · 🎤 audio · 📂 data channel
+    end

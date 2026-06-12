@@ -1,0 +1,38 @@
+flowchart LR
+    subgraph CLIENT ["Client-side LB"]
+        direction TB
+        C1["<img src="/icons/mdi-laptop.svg" alt="mdi:laptop" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Client<br/><span class='sub'>registry cache</span>"]:::client
+        REG["<img src="/icons/mdi-format-list-bulleted.svg" alt="mdi:format-list-bulleted" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Registry<br/><span class='sub'>Consul · etcd</span>"]:::compute
+        B1["<img src="/icons/mdi-server-outline.svg" alt="mdi:server-outline" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Backend A"]:::ok
+        B2["<img src="/icons/mdi-server-outline.svg" alt="mdi:server-outline" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Backend B"]:::ok
+        B3["<img src="/icons/mdi-server-outline.svg" alt="mdi:server-outline" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Backend C"]:::ok
+        C1 -.->|"refresh"| REG
+        C1 -->|"picks a peer"| B1
+        C1 --> B2
+        C1 --> B3
+    end
+
+    subgraph DED ["Dedicated LB"]
+        direction TB
+        C2["<img src="/icons/mdi-laptop.svg" alt="mdi:laptop" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Client"]:::client
+        VIP["<img src="/icons/logos-nginx.svg" alt="logos:nginx" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Load balancer<br/><span class='sub'>Envoy · ALB</span>"]:::highlight
+        D1["<img src="/icons/mdi-server-outline.svg" alt="mdi:server-outline" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Backend A"]:::ok
+        D2["<img src="/icons/mdi-server-outline.svg" alt="mdi:server-outline" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Backend B"]:::ok
+        D3["<img src="/icons/mdi-server-outline.svg" alt="mdi:server-outline" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Backend C"]:::ok
+        C2 --> VIP
+        VIP --> D1
+        VIP --> D2
+        VIP --> D3
+        VIP -.->|"health checks"| D1
+    end
+
+    classDef highlight fill:#f3ebff,stroke:#7c3aed,stroke-width:1.5px,color:#4c1d95;
+
+    classDef clusterOrange fill:transparent,stroke:#f97316,stroke-dasharray:6 4
+    classDef clusterBlue fill:transparent,stroke:#3b82f6,stroke-dasharray:6 4
+    class CLIENT clusterOrange
+    class DED clusterBlue
+
+classDef client stroke:#64748b,stroke-width:1.75px;
+classDef compute stroke:#7c3aed,stroke-width:1.75px;
+classDef ok stroke:#16a34a,stroke-width:1.75px;

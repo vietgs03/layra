@@ -1,0 +1,19 @@
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant S as Upstream
+
+    C->>S: GET /resource
+    S--xC: 503 Service Unavailable
+
+    Note over C: wait 100-300ms<br/>(base 200ms + jitter)
+    C->>S: attempt 2
+    S--xC: 503
+
+    Note over C: wait 200-600ms<br/>(base 400ms + jitter)
+    C->>S: attempt 3
+    S--xC: 503
+
+    Note over C: wait 400-1200ms<br/>(base 800ms + jitter)
+    C->>S: attempt 4
+    S-->>C: 200 OK ✅

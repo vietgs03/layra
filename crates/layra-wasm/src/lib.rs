@@ -14,20 +14,28 @@ fn registry() -> &'static Mutex<layra_icons::IconRegistry> {
     REG.get_or_init(|| Mutex::new(layra_icons::IconRegistry::new()))
 }
 
-/// Full pipeline: diagram source in, SVG string out.
+/// Full pipeline: diagram source in, SVG string out. Dispatches on diagram
+/// type — flowcharts and state diagrams run the graph pipeline; sequence
+/// diagrams use the dedicated deterministic layout.
 pub fn render_svg(source: &str, dark: bool) -> Result<String, String> {
-    let mut graph = layra_parser::parse(source).map_err(|e| e.to_string())?;
-    layra_text::measure_graph(&mut graph, &layra_text::TextOptions::default());
-    layra_layout::layout(&mut graph, &layra_layout::LayoutOptions::default());
-    layra_router::route(&mut graph);
+    let doc = layra_parser::parse_document(source).map_err(|e| e.to_string())?;
     let theme = if dark {
         layra_render_svg::Theme::dark()
     } else {
         layra_render_svg::Theme::light()
     };
-    let reg = registry().lock().map_err(|e| e.to_string())?;
-    let icons = (!reg.is_empty()).then_some(&*reg);
-    Ok(layra_render_svg::render_with_icons(&graph, &theme, icons))
+
+    match doc {
+        layra_core::Document::Graph(mut graph) => {
+            layra_text::measure_graph(&mut graph, &layra_text::TextOptions::default());
+            layra_layout::layout(&mut graph, &layra_layout::LayoutOptions::default());
+            layra_router::route(&mut graph);
+            let reg = registry().lock().map_err(|e| e.to_string())?;
+            let icons = (!reg.is_empty()).then_some(&*reg);
+            Ok(layra_render_svg::render_with_icons(&graph, &theme, icons))
+        }
+        layra_core::Document::Sequence(seq) => Ok(layra_render_svg::render_sequence(&seq, &theme)),
+    }
 }
 
 /// Load an Iconify-format icon pack JSON. Returns the number of icons

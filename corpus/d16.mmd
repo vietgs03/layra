@@ -1,0 +1,23 @@
+flowchart LR
+    subgraph RING ["Hash ring (mod 2³²)"]
+        direction TB
+        A["<img src="/icons/mdi-server-outline.svg" alt="mdi:server-outline" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Backend A<br/><span class='sub'>vnodes 0,120,250</span>"]:::ok
+        B["<img src="/icons/mdi-server-outline.svg" alt="mdi:server-outline" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Backend B<br/><span class='sub'>vnodes 60,180,310</span>"]:::step
+        C["<img src="/icons/mdi-server-outline.svg" alt="mdi:server-outline" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Backend C<br/><span class='sub'>vnodes 90,200,340</span>"]:::warn
+    end
+
+    K1["<img src="/icons/mdi-key-outline.svg" alt="mdi:key-outline" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> user:42<br/><span class='sub'>hash 85</span>"]:::client
+    K2["<img src="/icons/mdi-key-outline.svg" alt="mdi:key-outline" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> session:abc<br/><span class='sub'>hash 155</span>"]:::client
+    K3["<img src="/icons/mdi-key-outline.svg" alt="mdi:key-outline" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> order:7<br/><span class='sub'>hash 220</span>"]:::client
+
+    K1 ==>|"nearest cw = 90"| C
+    K2 ==>|"180"| B
+    K3 ==>|"250"| A
+
+    classDef clusterOrange fill:transparent,stroke:#f97316,stroke-dasharray:6 4
+    class RING clusterOrange
+
+classDef client stroke:#64748b,stroke-width:1.75px;
+classDef ok stroke:#16a34a,stroke-width:1.75px;
+classDef warn stroke:#d97706,stroke-width:1.75px;
+classDef step stroke:#3b6fd6,stroke-width:1.75px;

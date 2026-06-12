@@ -1,0 +1,14 @@
+flowchart LR
+    acked["<img src="/icons/mdi-check-all.svg" alt="mdi:check-all" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Bytes 1–3<br/><span class='sub'>acked</span>"]:::ok
+    flight["<img src="/icons/mdi-timer-sand.svg" alt="mdi:timer-sand" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Bytes 4–7<br/><span class='sub'>in-flight</span>"]:::step
+    avail["<img src="/icons/mdi-send-outline.svg" alt="mdi:send-outline" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Bytes 8–9<br/><span class='sub'>can send now</span>"]:::warn
+    blocked["<img src="/icons/mdi-cancel.svg" alt="mdi:cancel" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Bytes 10–11<br/><span class='sub'>beyond window</span>"]:::bad
+
+    acked ==>|"send base"| flight
+    flight ==>|"next byte"| avail
+    avail ===|"window edge"| blocked
+
+classDef ok stroke:#16a34a,stroke-width:1.75px;
+classDef warn stroke:#d97706,stroke-width:1.75px;
+classDef bad stroke:#dc2626,stroke-width:1.75px;
+classDef step stroke:#3b6fd6,stroke-width:1.75px;

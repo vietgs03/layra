@@ -6,6 +6,7 @@
 //! colored role borders (the component taxonomy), dashed cluster pills with
 //! colored title pills, thin neutral edges.
 
+mod sequence;
 mod shapes;
 mod theme;
 
@@ -13,9 +14,10 @@ use layra_core::{EdgeKind, EdgeStyle, Graph};
 use layra_icons::IconRegistry;
 use std::fmt::Write;
 
+pub use sequence::render_sequence;
 pub use theme::Theme;
 
-const FONT_STACK: &str = "Inter, 'Helvetica Neue', Arial, sans-serif";
+pub(crate) const FONT_STACK: &str = "Inter, 'Helvetica Neue', Arial, sans-serif";
 
 /// Render `graph` to SVG without icons.
 pub fn render(graph: &Graph, theme: &Theme) -> String {

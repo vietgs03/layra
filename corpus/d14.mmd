@@ -1,0 +1,30 @@
+flowchart LR
+    R["<img src="/icons/mdi-tray-arrow-down.svg" alt="mdi:tray-arrow-down" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Requests<br/><span class='sub'>1…10</span>"]:::highlight
+
+    subgraph RR ["Round-robin"]
+        direction TB
+        A1["<img src="/icons/mdi-server-outline.svg" alt="mdi:server-outline" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> A<br/><span class='sub'>1, 5, 9</span>"]:::ok
+        A2["<img src="/icons/mdi-server-outline.svg" alt="mdi:server-outline" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> B<br/><span class='sub'>2, 6, 10</span>"]:::ok
+        A3["<img src="/icons/mdi-server-outline.svg" alt="mdi:server-outline" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> C<br/><span class='sub'>3, 7</span>"]:::ok
+        A4["<img src="/icons/mdi-server-outline.svg" alt="mdi:server-outline" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> D<br/><span class='sub'>4, 8</span>"]:::ok
+    end
+
+    subgraph WRR ["Weighted (A=3·B=C=D=1)"]
+        direction TB
+        B1["<img src="/icons/mdi-server-outline.svg" alt="mdi:server-outline" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> A<br/><span class='sub'>1,2,3,7,8,9</span>"]:::ok
+        B2["<img src="/icons/mdi-server-outline.svg" alt="mdi:server-outline" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> B<br/><span class='sub'>4, 10</span>"]:::ok
+        B3["<img src="/icons/mdi-server-outline.svg" alt="mdi:server-outline" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> C<br/><span class='sub'>5</span>"]:::ok
+        B4["<img src="/icons/mdi-server-outline.svg" alt="mdi:server-outline" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> D<br/><span class='sub'>6</span>"]:::ok
+    end
+
+    R ==> RR
+    R ==> WRR
+
+    classDef highlight fill:#f3ebff,stroke:#7c3aed,stroke-width:1.5px,color:#4c1d95;
+
+    classDef clusterBlue fill:transparent,stroke:#3b82f6,stroke-dasharray:6 4
+    classDef clusterGreen fill:transparent,stroke:#16a34a,stroke-dasharray:6 4
+    class RR clusterBlue
+    class WRR clusterGreen
+
+classDef ok stroke:#16a34a,stroke-width:1.75px;

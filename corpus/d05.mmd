@@ -1,0 +1,21 @@
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant S as Server
+
+    rect rgb(219, 234, 254)
+    Note over C,S: TLS 1.3 — fresh handshake (1 RTT)
+    C->>+S: ClientHello<br/>(supported ciphers · key share · SNI)
+    S-->>-C: ServerHello · cert · Finished<br/>(picks cipher · sends its key share)
+    Note over C,S: 🔑 both sides derive the session key
+    C->>S: Finished (encrypted)
+    C->>+S: HTTP GET / (encrypted)
+    S-->>-C: HTTP 200 OK (encrypted)
+    end
+
+    rect rgb(220, 252, 231)
+    Note over C,S: TLS 1.3 resumption — 0 RTT (early data)
+    C->>+S: ClientHello + <b>early data</b> (encrypted with PSK)
+    S-->>-C: ServerHello + response (no handshake wait)
+    Note right of S: ⚠️ early data is <br/>replayable — don't use for<br/>state-changing requests
+    end

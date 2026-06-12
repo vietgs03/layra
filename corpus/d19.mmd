@@ -1,0 +1,18 @@
+flowchart LR
+    user["<img src="/icons/mdi-account.svg" alt="mdi:account" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> User"]:::client
+    pop["<img src="/icons/logos-cloudflare.svg" alt="logos:cloudflare" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Edge PoP<br/><span class='sub'>nearest cache</span>"]:::highlight
+    origin["<img src="/icons/mdi-server-outline.svg" alt="mdi:server-outline" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Origin<br/><span class='sub'>app server</span>"]:::compute
+    bucket["<img src="/icons/logos-aws-s3.svg" alt="logos:aws-s3" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Object store<br/><span class='sub'>S3</span>"]:::storage
+
+    user ==>|"request"| pop
+    pop ==>|"cache miss"| origin
+    origin -->|"read"| bucket
+    bucket -.->|"response"| origin
+    origin -.->|"fill cache"| pop
+    pop -.->|"response"| user
+
+    classDef highlight fill:#f3ebff,stroke:#7c3aed,stroke-width:1.5px,color:#4c1d95;
+
+classDef client stroke:#64748b,stroke-width:1.75px;
+classDef compute stroke:#7c3aed,stroke-width:1.75px;
+classDef storage stroke:#f59e0b,stroke-width:1.75px;

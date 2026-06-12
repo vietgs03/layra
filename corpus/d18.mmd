@@ -1,0 +1,32 @@
+flowchart LR
+    user["<img src="/icons/mdi-account.svg" alt="mdi:account" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> User"]:::client
+    cdn["<img src="/icons/logos-cloudflare.svg" alt="logos:cloudflare" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> CDN<br/><span class='sub'>anycast edge</span>"]:::edge
+
+    subgraph region ["Region (one of many)"]
+        direction TB
+        lb["<img src="/icons/logos-nginx.svg" alt="logos:nginx" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> LB<br/><span class='sub'>nginx</span>"]:::highlight
+        app["<img src="/icons/mdi-server-outline.svg" alt="mdi:server-outline" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> API<br/><span class='sub'>Go</span>"]:::compute
+        cache["<img src="/icons/logos-redis.svg" alt="logos:redis" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Cache<br/><span class='sub'>Redis</span>"]:::cache
+        db["<img src="/icons/logos-postgresql.svg" alt="logos:postgresql" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> DB<br/><span class='sub'>Postgres</span>"]:::database
+    end
+
+    kafka["{iconify:logos:apache-kafka} Kafka<br/><span class='sub'>cross-region</span>"]:::queue
+
+    user ==>|"HTTPS"| cdn
+    cdn ==>|"miss → origin"| lb
+    lb ==>|"route"| app
+    app ==>|"read/write"| cache
+    app ==>|"sync write"| db
+    db -.->|"CDC events"| kafka
+
+    classDef highlight fill:#f3ebff,stroke:#7c3aed,stroke-width:1.5px,color:#4c1d95;
+
+    classDef clusterOrange fill:transparent,stroke:#f97316,stroke-dasharray:6 4
+    class region clusterOrange
+
+classDef client stroke:#64748b,stroke-width:1.75px;
+classDef edge stroke:#3b82f6,stroke-width:1.75px;
+classDef compute stroke:#7c3aed,stroke-width:1.75px;
+classDef database stroke:#f97316,stroke-width:1.75px;
+classDef cache stroke:#10b981,stroke-width:1.75px;
+classDef queue stroke:#a855f7,stroke-width:1.75px;

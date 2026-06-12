@@ -8,7 +8,6 @@ fn main() {
         println!("loaded {n} icons from blog pack");
     }
     let mut ok = 0;
-    let mut skip = 0;
     let mut fail = 0;
     let mut files: Vec<_> = std::fs::read_dir(&dir).unwrap().flatten().collect();
     files.sort_by_key(|e| e.path());
@@ -18,11 +17,14 @@ fn main() {
             continue;
         }
         let src = std::fs::read_to_string(&path).unwrap();
-        let first = src.lines().next().unwrap_or("");
-        if !(first.starts_with("flowchart") || first.starts_with("graph")) {
-            skip += 1;
-            continue; // sequence/state diagrams: future work
-        }
+        let kind = src
+            .lines()
+            .next()
+            .unwrap_or("?")
+            .split_whitespace()
+            .next()
+            .unwrap_or("?")
+            .to_string();
         match layra_wasm::render_svg(&src, false) {
             Ok(svg) => {
                 ok += 1;
@@ -30,14 +32,18 @@ fn main() {
                 std::fs::write(format!("/tmp/blog-out/{name}.svg"), &svg).unwrap();
                 let icons = svg.matches("viewBox=\"0 0 24").count()
                     + svg.matches("viewBox=\"0 0 256").count();
-                println!("OK   {} ({} bytes, ~{} icons)", name, svg.len(), icons);
+                println!(
+                    "OK   {name} [{kind}] ({} bytes, ~{} icons)",
+                    svg.len(),
+                    icons
+                );
             }
             Err(e) => {
                 fail += 1;
-                println!("FAIL {}: {}", path.display(), e);
+                println!("FAIL {} [{kind}]: {}", path.display(), e);
             }
         }
     }
-    println!("\n{ok} ok / {fail} fail / {skip} skipped (non-flowchart)");
+    println!("\n{ok} ok / {fail} fail");
     std::process::exit(if fail > 0 { 1 } else { 0 });
 }

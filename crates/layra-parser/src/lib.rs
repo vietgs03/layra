@@ -24,11 +24,14 @@
 //!   stored on the node)
 
 use layra_core::{
-    ComponentRole, Direction, Edge, EdgeKind, EdgeStyle, Graph, Node, NodeId, NodeShape, Subgraph,
-    SubgraphId,
+    ComponentRole, Direction, Document, Edge, EdgeKind, EdgeStyle, Graph, Node, NodeId, NodeShape,
+    Subgraph, SubgraphId,
 };
 use std::collections::HashMap;
 use thiserror::Error;
+
+mod sequence;
+mod state;
 
 #[derive(Debug, Error)]
 pub enum ParseError {
@@ -36,6 +39,32 @@ pub enum ParseError {
     Syntax { line: usize, message: String },
 }
 
+/// Parse any supported diagram type, dispatching on the header line:
+/// `flowchart`/`graph`, `sequenceDiagram`, `stateDiagram`/`stateDiagram-v2`.
+pub fn parse_document(source: &str) -> Result<Document, ParseError> {
+    let lines: Vec<(usize, &str)> = source
+        .lines()
+        .enumerate()
+        .map(|(i, l)| (i + 1, l.trim()))
+        .filter(|(_, l)| !l.is_empty() && !l.starts_with("%%"))
+        .collect();
+
+    let Some(&(_, header)) = lines.first() else {
+        return Ok(Document::Graph(Graph::default()));
+    };
+
+    if header == "sequenceDiagram" {
+        return Ok(Document::Sequence(sequence::parse(&lines[1..])?));
+    }
+    if header.starts_with("stateDiagram") {
+        return Ok(Document::Graph(state::parse(&lines[1..])?));
+    }
+    // flowchart / graph / headerless default to the flowchart parser.
+    Ok(Document::Graph(parse(source)?))
+}
+
+/// Parse flowchart source only (legacy entry point; prefer
+/// [`parse_document`]).
 pub fn parse(source: &str) -> Result<Graph, ParseError> {
     Parser::new(source).run()
 }
@@ -467,7 +496,7 @@ fn parse_role(s: &str) -> Option<ComponentRole> {
 
 /// Edge labels: strip quotes and reduce embedded HTML (`<br/>` → newline,
 /// other tags dropped).
-fn clean_edge_label(raw: &str) -> String {
+pub(crate) fn clean_edge_label(raw: &str) -> String {
     let trimmed = raw.trim().trim_matches('"');
     let (text, _) = sanitize_html_label(trimmed.to_string());
     text
@@ -479,7 +508,7 @@ fn clean_edge_label(raw: &str) -> String {
 /// - `<img src=".../icons/{pack}-{name}.svg">` → icon `pack:name`
 /// - `<br>`/`<br/>` → newline
 /// - any other tag → stripped, inner text kept
-fn sanitize_html_label(label: String) -> (String, Option<String>) {
+pub(crate) fn sanitize_html_label(label: String) -> (String, Option<String>) {
     if !label.contains('<') {
         return (label, None);
     }

@@ -1,0 +1,37 @@
+flowchart TB
+    Need["<img src="/icons/mdi-cellphone.svg" alt="mdi:cellphone" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Mobile needs<br/><span class='sub'>name · lastOrderId · unreadCount</span>"]:::highlight
+
+    subgraph REST ["REST — 3 round trips"]
+        direction TB
+        R1["<img src="/icons/mdi-web.svg" alt="mdi:web" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> GET /users/42<br/><span class='sub'>20 fields, keeps 1</span>"]:::bad
+        R2["<img src="/icons/mdi-web.svg" alt="mdi:web" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> GET .../orders?limit=1<br/><span class='sub'>full Order, keeps id</span>"]:::bad
+        R3["<img src="/icons/mdi-web.svg" alt="mdi:web" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> GET .../unread-count<br/><span class='sub'>third trip</span>"]:::bad
+        R1 --> R2 --> R3
+    end
+
+    subgraph GQL ["GraphQL — 1 round trip"]
+        direction TB
+        G1["<img src="/icons/logos-graphql.svg" alt="logos:graphql" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> POST /graphql<br/><span class='sub'>exact shape</span>"]:::ok
+    end
+
+    subgraph GRPC ["gRPC — 1 round trip"]
+        direction TB
+        P1["<img src="/icons/mdi-cog.svg" alt="mdi:cog" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> GetProfile(42)<br/><span class='sub'>server aggregate</span>"]:::step
+    end
+
+    Need ==> REST
+    Need ==> GQL
+    Need ==> GRPC
+
+    classDef highlight fill:#f3ebff,stroke:#7c3aed,stroke-width:1.5px,color:#4c1d95;
+
+    classDef clusterRed fill:transparent,stroke:#dc2626,stroke-dasharray:6 4
+    classDef clusterGreen fill:transparent,stroke:#16a34a,stroke-dasharray:6 4
+    classDef clusterBlue fill:transparent,stroke:#3b82f6,stroke-dasharray:6 4
+    class REST clusterRed
+    class GQL clusterGreen
+    class GRPC clusterBlue
+
+classDef ok stroke:#16a34a,stroke-width:1.75px;
+classDef bad stroke:#dc2626,stroke-width:1.75px;
+classDef step stroke:#3b6fd6,stroke-width:1.75px;

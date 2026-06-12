@@ -1,0 +1,32 @@
+flowchart LR
+    R["<img src="/icons/mdi-tray-arrow-down.svg" alt="mdi:tray-arrow-down" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Requests<br/><span class='sub'>route by load</span>"]:::highlight
+
+    subgraph LC ["Least-connections"]
+        direction TB
+        C1["<img src="/icons/mdi-server-outline.svg" alt="mdi:server-outline" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> A<br/><span class='sub'>3 open</span>"]:::warn
+        C2["<img src="/icons/mdi-server-outline.svg" alt="mdi:server-outline" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> B<br/><span class='sub'>4 open</span>"]:::bad
+        C3["<img src="/icons/mdi-server-outline.svg" alt="mdi:server-outline" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> C<br/><span class='sub'>1 open ← next</span>"]:::ok
+        C4["<img src="/icons/mdi-server-outline.svg" alt="mdi:server-outline" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> D<br/><span class='sub'>2 open</span>"]:::warn
+    end
+
+    subgraph P2C ["Power of two choices"]
+        direction TB
+        D1["<img src="/icons/mdi-dice-2.svg" alt="mdi:dice-2" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Pick 2 random<br/><span class='sub'>C=1 vs A=3</span>"]:::step
+        D2["<img src="/icons/mdi-server-outline.svg" alt="mdi:server-outline" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Send to C<br/><span class='sub'>fewer in-flight</span>"]:::ok
+        D1 --> D2
+    end
+
+    R ==> LC
+    R ==> P2C
+
+    classDef highlight fill:#f3ebff,stroke:#7c3aed,stroke-width:1.5px,color:#4c1d95;
+
+    classDef clusterOrange fill:transparent,stroke:#f97316,stroke-dasharray:6 4
+    classDef clusterPurple fill:transparent,stroke:#a855f7,stroke-dasharray:6 4
+    class LC clusterOrange
+    class P2C clusterPurple
+
+classDef ok stroke:#16a34a,stroke-width:1.75px;
+classDef warn stroke:#d97706,stroke-width:1.75px;
+classDef bad stroke:#dc2626,stroke-width:1.75px;
+classDef step stroke:#3b6fd6,stroke-width:1.75px;

@@ -1,0 +1,32 @@
+flowchart LR
+    subgraph AP ["Active / Passive"]
+        direction TB
+        APpri["<img src="/icons/mdi-server-outline.svg" alt="mdi:server-outline" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Primary<br/><span class='sub'>100% traffic</span>"]:::ok
+        APstd["<img src="/icons/mdi-server-outline.svg" alt="mdi:server-outline" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Standby<br/><span class='sub'>0% · replicated</span>"]:::warn
+        APpri -.->|"async replication"| APstd
+    end
+
+    subgraph AA ["Active / Active"]
+        direction TB
+        AA1["<img src="/icons/mdi-earth.svg" alt="mdi:earth" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Region A<br/><span class='sub'>50%</span>"]:::ok
+        AA2["<img src="/icons/mdi-earth.svg" alt="mdi:earth" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Region B<br/><span class='sub'>50%</span>"]:::ok
+        AA1 <==>|"bi-directional sync"| AA2
+    end
+
+    subgraph CELL ["Cell-based"]
+        direction TB
+        C1["<img src="/icons/mdi-view-grid.svg" alt="mdi:view-grid" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Cell 1<br/><span class='sub'>users 0-33%</span>"]:::step
+        C2["<img src="/icons/mdi-view-grid.svg" alt="mdi:view-grid" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Cell 2<br/><span class='sub'>users 33-66%</span>"]:::step
+        C3["<img src="/icons/mdi-view-grid.svg" alt="mdi:view-grid" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Cell 3<br/><span class='sub'>users 66-100%</span>"]:::step
+    end
+
+    classDef clusterBlue fill:transparent,stroke:#3b82f6,stroke-dasharray:6 4
+    classDef clusterGreen fill:transparent,stroke:#16a34a,stroke-dasharray:6 4
+    classDef clusterPurple fill:transparent,stroke:#a855f7,stroke-dasharray:6 4
+    class AP clusterBlue
+    class AA clusterGreen
+    class CELL clusterPurple
+
+classDef ok stroke:#16a34a,stroke-width:1.75px;
+classDef warn stroke:#d97706,stroke-width:1.75px;
+classDef step stroke:#3b6fd6,stroke-width:1.75px;

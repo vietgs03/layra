@@ -1,0 +1,16 @@
+sequenceDiagram
+    autonumber
+    participant U as User
+    participant A as API (budget: 800ms)
+    participant B as Service B (budget: 400ms)
+    participant C as Service C (budget: 150ms)
+
+    U->>A: request
+    Note over A: deadline = now + 800ms
+    A->>B: call (ctx deadline = 400ms)
+    Note over B: deadline = now + 400ms
+    B->>C: call (ctx deadline = 150ms)
+    Note over C: deadline = now + 150ms
+    C-->>B: 80ms
+    B-->>A: 220ms
+    A-->>U: 370ms ✓ within budget

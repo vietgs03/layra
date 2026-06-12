@@ -1,0 +1,23 @@
+flowchart TD
+    Q{{"Need real-time updates?"}}:::ask
+    D1{{"Direction?"}}:::ask
+    D2{{"Payload type?"}}:::ask
+    D3{{"Latency bound?"}}:::ask
+
+    POLL["<img src="/icons/mdi-timer-outline.svg" alt="mdi:timer-outline" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> Long-polling<br/><span class='sub'>plain HTTP is fine</span>"]:::step
+    SSE["<img src="/icons/mdi-arrow-down-bold.svg" alt="mdi:arrow-down-bold" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> SSE<br/><span class='sub'>server→client, reconnect</span>"]:::ok
+    WS["<img src="/icons/mdi-swap-vertical-bold.svg" alt="mdi:swap-vertical-bold" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> WebSocket<br/><span class='sub'>full-duplex</span>"]:::ok
+    RTC["<img src="/icons/mdi-account-multiple.svg" alt="mdi:account-multiple" class="diagram-node-icon" width="24" height="24" style="display:block;margin:0 auto 4px;" /> WebRTC<br/><span class='sub'>p2p sub-100ms</span>"]:::ok
+
+    Q -->|"no, can wait"| POLL
+    Q -->|"yes"| D1
+    D1 -->|"server → client"| SSE
+    D1 -->|"both directions"| D2
+    D2 -->|"text / structured"| WS
+    D2 -->|"audio / video"| D3
+    D3 -->|"every ms matters"| RTC
+    D3 -->|"server relay OK"| WS
+
+classDef ok stroke:#16a34a,stroke-width:1.75px;
+classDef step stroke:#3b6fd6,stroke-width:1.75px;
+classDef ask stroke:#6366f1,stroke-width:1.75px;

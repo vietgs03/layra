@@ -3,7 +3,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-wasm-pack build crates/layra-wasm --target web --release --out-dir ../../playground/public/pkg --no-typescript --no-pack
+wasm-pack build crates/layra-wasm --target web --release --out-dir ../../playground/public/pkg --no-pack
 
 rm -rf playground/dist
 mkdir -p playground/dist

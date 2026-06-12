@@ -94,6 +94,33 @@ pub fn load_icons(json: &str) -> Result<usize, JsError> {
     load_icon_pack(json).map_err(|e| JsError::new(&e))
 }
 
+/// Structured pipeline output: parse + measure + layout + route, then
+/// return the **laid-out document as JSON** instead of SVG. For consumers
+/// that render themselves (Canvas/WebGL/React/D3) or need hit-testing,
+/// animation, custom theming — Rust does the expensive math, JS/TS owns
+/// the pixels.
+///
+/// Graph JSON shape: `{ "kind": "graph", "nodes": [{name,label,shape,role,
+/// icon,rect:{x,y,width,height}}], "edges": [{source,target,label,style,
+/// kind,points:[{x,y}],label_pos}], "subgraphs": [...], "bounds": {...} }`
+#[wasm_bindgen]
+pub fn layout_json(source: &str) -> Result<String, JsError> {
+    let (doc, _) = layra_parser::parse_document_lenient(source);
+    let value = match doc {
+        layra_core::Document::Graph(mut graph) => {
+            layra_text::measure_graph(&mut graph, &layra_text::TextOptions::default());
+            layra_layout::layout(&mut graph, &layra_layout::LayoutOptions::default());
+            layra_router::route(&mut graph);
+            let bounds = graph.bounds();
+            serde_json::json!({ "kind": "graph", "bounds": bounds, "graph": graph })
+        }
+        layra_core::Document::Sequence(seq) => {
+            serde_json::json!({ "kind": "sequence", "sequence": seq })
+        }
+    };
+    serde_json::to_string(&value).map_err(|e| JsError::new(&e.to_string()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

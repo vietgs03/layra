@@ -74,3 +74,35 @@ cargo test                           # 18 tests across the pipeline
 ## License
 
 MIT
+
+## Consuming from JS / TypeScript
+
+Two integration levels, both from the same WASM bundle:
+
+**1. `render(source, dark)` — SVG out (simplest).** Rust does everything:
+parse → measure → layout → route → SVG string. Drop it into `innerHTML`.
+`render_lenient` additionally returns `{svg, warnings}` JSON and skips
+unparseable lines instead of failing.
+
+**2. `layout_json(source)` — geometry out (most flexible).** Rust does the
+expensive math (parsing, text measurement, Sugiyama layout, edge routing)
+and returns the laid-out document as JSON: node rects, edge polylines,
+label anchor points, cluster bounds. You render however you like — Canvas,
+WebGL, React components, D3 — with `playground/public/layra-types.ts`
+giving you full type safety:
+
+```ts
+import { parseLayout } from "./layra-types";
+import init, { layout_json } from "./pkg/layra_wasm.js";
+
+await init();
+const doc = parseLayout(layout_json("flowchart LR\n a --> b"));
+if (doc.kind === "graph") {
+  for (const node of doc.graph.nodes) ctx.strokeRect(node.rect.x, node.rect.y, node.rect.width, node.rect.height);
+}
+```
+
+The split is deliberate: layout dominates diagram cost (graph algorithms,
+text measurement) and stays in Rust; painting is cheap and belongs to
+whoever owns the UI. TypeScript definitions for the wasm exports ship via
+wasm-pack (`pkg/layra_wasm.d.ts`).

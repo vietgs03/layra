@@ -16,10 +16,14 @@ Mermaid renders labels into the DOM to measure them and runs its layout in
 JS. Layra measures text with font metrics (no DOM) and runs layout in native
 code. Current numbers on the full pipeline (parse → SVG string):
 
-| Graph | Time |
+| Graph | Time (full pipeline) |
 |---|---|
-| 12 nodes, 11 edges, 1 cluster | **~51 µs** |
-| 500-node tree | **~1.6 ms** |
+| 12 nodes, 11 edges, 1 cluster | **~21 µs** |
+| 500-node tree | **~1 ms** |
+| 5,000-node dense graph | **~16 ms** |
+
+Per-stage on the 5k graph: parse ~5ms, layout ~3.6ms, SVG ~5.4ms —
+profiled with `cargo run --release --example bench`.
 
 Fast enough to re-render on every keystroke.
 

@@ -20,3 +20,6 @@ layra-router = { workspace = true }
 layra-render-svg = { workspace = true }
 serde_json = { workspace = true }
 wasm-bindgen = "0.2"
+
+[dev-dependencies]
+layra-parser = { workspace = true }

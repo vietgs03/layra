@@ -6,6 +6,7 @@
 //! colored role borders (the component taxonomy), dashed cluster pills with
 //! colored title pills, thin neutral edges.
 
+mod fmt;
 mod sequence;
 mod shapes;
 mod theme;
@@ -31,7 +32,10 @@ pub fn render_with_icons(graph: &Graph, theme: &Theme, icons: Option<&IconRegist
     let w = bounds.width.ceil();
     let h = bounds.height.ceil();
 
-    let mut svg = String::with_capacity(4096);
+    // ~220 bytes/node + ~180 bytes/edge empirically; pre-size to avoid
+    // repeated buffer growth on large graphs.
+    let estimate = 1024 + graph.nodes.len() * 260 + graph.edges.len() * 200;
+    let mut svg = String::with_capacity(estimate);
     let _ = write!(
         svg,
         r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{:.0} {:.0} {w:.0} {h:.0}" width="{w:.0}" height="{h:.0}" font-family="{FONT_STACK}">"#,
@@ -95,21 +99,37 @@ fn write_edge(svg: &mut String, edge: &layra_core::Edge, theme: &Theme) {
         return;
     }
 
-    let mut d = String::new();
-    let _ = write!(d, "M{:.1} {:.1}", edge.points[0].x, edge.points[0].y);
+    // Path data is the hottest string in the renderer (one coordinate pair
+    // per waypoint per edge) — build it with the fast formatter.
+    let mut d = String::with_capacity(16 + edge.points.len() * 16);
+    d.push('M');
+    fmt::push_f1(&mut d, edge.points[0].x);
+    d.push(' ');
+    fmt::push_f1(&mut d, edge.points[0].y);
     if edge.points.len() == 2 {
-        let _ = write!(d, " L{:.1} {:.1}", edge.points[1].x, edge.points[1].y);
+        d.push('L');
+        fmt::push_f1(&mut d, edge.points[1].x);
+        d.push(' ');
+        fmt::push_f1(&mut d, edge.points[1].y);
     } else {
         // Smooth through waypoints with quadratic joins.
         for i in 1..edge.points.len() - 1 {
             let p = edge.points[i];
             let next = edge.points[i + 1];
-            let mx = (p.x + next.x) / 2.0;
-            let my = (p.y + next.y) / 2.0;
-            let _ = write!(d, " Q{:.1} {:.1} {:.1} {:.1}", p.x, p.y, mx, my);
+            d.push('Q');
+            fmt::push_f1(&mut d, p.x);
+            d.push(' ');
+            fmt::push_f1(&mut d, p.y);
+            d.push(' ');
+            fmt::push_f1(&mut d, (p.x + next.x) / 2.0);
+            d.push(' ');
+            fmt::push_f1(&mut d, (p.y + next.y) / 2.0);
         }
         let last = edge.points[edge.points.len() - 1];
-        let _ = write!(d, " L{:.1} {:.1}", last.x, last.y);
+        d.push('L');
+        fmt::push_f1(&mut d, last.x);
+        d.push(' ');
+        fmt::push_f1(&mut d, last.y);
     }
 
     let (width, dash) = match edge.style {
@@ -205,11 +225,23 @@ fn write_node(
     }
 }
 
-pub(crate) fn escape(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
+/// Escape text for SVG. Borrows when no escaping is needed (the common
+/// case), avoiding four chained replace() allocations per label.
+pub(crate) fn escape(s: &str) -> std::borrow::Cow<'_, str> {
+    if !s.contains(['&', '<', '>', '"']) {
+        return std::borrow::Cow::Borrowed(s);
+    }
+    let mut out = String::with_capacity(s.len() + 8);
+    for c in s.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            _ => out.push(c),
+        }
+    }
+    std::borrow::Cow::Owned(out)
 }
 
 #[cfg(test)]

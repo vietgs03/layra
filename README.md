@@ -76,9 +76,25 @@ flowchart LR
 
 ## Try it
 
+**Playground** (zero install): https://vietgs03.github.io/layra/
+
+**CLI**:
+
+```bash
+cargo install --path crates/layra-cli   # or grab a binary from Releases
+
+layra render diagram.mmd                # → diagram.svg
+layra render diagram.mmd -o out.svg --dark
+cat diagram.mmd | layra render - -o -   # stdin → stdout
+layra render docs/*.mmd --check         # CI gate: exit 1 on any parse issue
+layra render d.mmd --icons mdi.json     # extra Iconify packs
+```
+
+**Library**:
+
 ```bash
 cargo run --release --example demo   # writes demo.svg + demo-dark.svg, prints timings
-cargo test                           # 18 tests across the pipeline
+cargo test                           # full pipeline test suite
 ```
 
 ## Roadmap

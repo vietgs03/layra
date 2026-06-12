@@ -9,6 +9,7 @@ members = [
     "crates/layra-render-svg",
     "crates/layra-parser",
     "crates/layra-wasm",
+    "crates/layra-cli",
 ]
 
 [workspace.package]
@@ -26,6 +27,7 @@ layra-router = { path = "crates/layra-router" }
 layra-text = { path = "crates/layra-text" }
 layra-render-svg = { path = "crates/layra-render-svg" }
 layra-parser = { path = "crates/layra-parser" }
+layra-wasm = { path = "crates/layra-wasm" }
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

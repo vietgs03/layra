@@ -145,18 +145,43 @@ fn write_edge(svg: &mut String, edge: &layra_core::Edge, theme: &Theme) {
         d.push(' ');
         fmt::push_f1(&mut d, edge.points[1].y);
     } else {
-        // Smooth through waypoints with quadratic joins.
+        // Round each interior corner with a fixed radius: straight runs
+        // stay straight (unlike midpoint quadratics which bow the whole
+        // segment), corners get a compact draw.io-style curve.
+        const CORNER_R: f32 = 8.0;
         for i in 1..edge.points.len() - 1 {
+            let prev = edge.points[i - 1];
             let p = edge.points[i];
             let next = edge.points[i + 1];
+
+            let din = ((p.x - prev.x).powi(2) + (p.y - prev.y).powi(2)).sqrt();
+            let dout = ((next.x - p.x).powi(2) + (next.y - p.y).powi(2)).sqrt();
+            let r = CORNER_R.min(din / 2.0).min(dout / 2.0);
+
+            if r < 1.0 || din < 0.5 || dout < 0.5 {
+                d.push('L');
+                fmt::push_f1(&mut d, p.x);
+                d.push(' ');
+                fmt::push_f1(&mut d, p.y);
+                continue;
+            }
+            // Entry point r before the corner, exit point r after.
+            let ex = p.x - (p.x - prev.x) / din * r;
+            let ey = p.y - (p.y - prev.y) / din * r;
+            let lx = p.x + (next.x - p.x) / dout * r;
+            let ly = p.y + (next.y - p.y) / dout * r;
+            d.push('L');
+            fmt::push_f1(&mut d, ex);
+            d.push(' ');
+            fmt::push_f1(&mut d, ey);
             d.push('Q');
             fmt::push_f1(&mut d, p.x);
             d.push(' ');
             fmt::push_f1(&mut d, p.y);
             d.push(' ');
-            fmt::push_f1(&mut d, (p.x + next.x) / 2.0);
+            fmt::push_f1(&mut d, lx);
             d.push(' ');
-            fmt::push_f1(&mut d, (p.y + next.y) / 2.0);
+            fmt::push_f1(&mut d, ly);
         }
         let last = edge.points[edge.points.len() - 1];
         d.push('L');

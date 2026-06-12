@@ -1,0 +1,15 @@
+[package]
+name = "layra-cli"
+description = "Render Mermaid-compatible diagrams to SVG from the command line"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "layra"
+path = "src/main.rs"
+
+[dependencies]
+layra-wasm = { workspace = true }

@@ -8,3 +8,4 @@ packages/core/dist/
 packages/core/*.tgz
 packages/vscode/media/
 packages/vscode/*.vsix
+.roadmap-internal.md

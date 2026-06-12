@@ -87,22 +87,27 @@ fn shape_factor(shape: NodeShape) -> (f32, f32) {
     }
 }
 
-/// Fill `node.size` for every node in the graph from its label and shape.
-pub fn measure_graph(graph: &mut Graph, opts: &TextOptions) {
-    const ICON_SIZE: f32 = 18.0;
-    const ICON_GAP: f32 = 6.0;
+/// Icon block size used by both measurement and rendering.
+pub const ICON_SIZE: f32 = 22.0;
+/// Gap between the icon block and the first label line.
+pub const ICON_GAP: f32 = 5.0;
 
+/// Fill `node.size` for every node in the graph from its label and shape.
+///
+/// Icons render as a block above the label (the blog's editorial style),
+/// so they add height, not width.
+pub fn measure_graph(graph: &mut Graph, opts: &TextOptions) {
     for node in &mut graph.nodes {
         let text = measure_label(&node.label, opts);
-        let icon_w = if node.icon.is_some() {
+        let icon_h = if node.icon.is_some() {
             ICON_SIZE + ICON_GAP
         } else {
             0.0
         };
         let (fx, fy) = shape_factor(node.shape);
-        let mut w = ((text.width + icon_w) * fx + opts.padding_x * 2.0).max(opts.min_node_width);
-        let mut h =
-            (text.height.max(ICON_SIZE) * fy + opts.padding_y * 2.0).max(opts.min_node_height);
+        let mut w = (text.width.max(icon_h.min(ICON_SIZE)) * fx + opts.padding_x * 2.0)
+            .max(opts.min_node_width);
+        let mut h = ((text.height + icon_h) * fy + opts.padding_y * 2.0).max(opts.min_node_height);
         // Circles render with radius = max(w, h)/2, so layout must reserve a
         // square box or the drawn circle bleeds into rank spacing.
         if node.shape == NodeShape::Circle {

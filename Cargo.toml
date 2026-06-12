@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/layra-core",
+    "crates/layra-icons",
     "crates/layra-layout",
     "crates/layra-router",
     "crates/layra-text",
@@ -19,6 +20,7 @@ authors = ["Hoàng Xuân Việt <viet.gs03@gmail.com>"]
 
 [workspace.dependencies]
 layra-core = { path = "crates/layra-core" }
+layra-icons = { path = "crates/layra-icons" }
 layra-layout = { path = "crates/layra-layout" }
 layra-router = { path = "crates/layra-router" }
 layra-text = { path = "crates/layra-text" }

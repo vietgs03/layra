@@ -102,6 +102,14 @@ impl<'a> Parser<'a> {
         if line.starts_with("classDef") || line.starts_with("class ") || line.starts_with("style") {
             return Ok(()); // theming handled by Layra's taxonomy; ignore
         }
+        if line.starts_with("direction ") {
+            // Per-subgraph direction: accepted for compatibility; layout
+            // currently applies the global direction (tracked for v1.1).
+            return Ok(());
+        }
+        if line.starts_with("linkStyle") {
+            return Ok(()); // per-link styling not yet mapped; ignore
+        }
         self.node_or_edge_chain(ln, line)
     }
 
@@ -310,7 +318,7 @@ fn parse_edge_op(s: &str) -> Option<(EdgeOp, &str)> {
                     } else {
                         EdgeKind::Arrow
                     },
-                    label: (!label.is_empty()).then(|| label.to_string()),
+                    label: (!label.is_empty()).then(|| clean_edge_label(label)),
                 },
                 tail,
             ));
@@ -337,7 +345,7 @@ fn parse_edge_op(s: &str) -> Option<(EdgeOp, &str)> {
     // Pipe label: `|label|`
     let (label, tail) = if let Some(rest) = after.trim_start().strip_prefix('|') {
         let end = rest.find('|')?;
-        (Some(rest[..end].trim().to_string()), &rest[end + 1..])
+        (Some(clean_edge_label(&rest[..end])), &rest[end + 1..])
     } else {
         (None, after)
     };
@@ -391,13 +399,15 @@ fn parse_node_decl(text: &str) -> Option<NodeDecl> {
 
     let (shape, raw_label) = parse_bracket(bracket)?;
     let (label, icon) = extract_icon(raw_label);
+    let (label, icon_from_html) = sanitize_html_label(label);
+    let label = unescape_newlines(label);
 
     Some(NodeDecl {
         name: name.to_string(),
         label: Some(label),
         shape: Some(shape),
         role,
-        icon,
+        icon: icon.or(icon_from_html),
     })
 }
 
@@ -453,6 +463,91 @@ fn parse_role(s: &str) -> Option<ComponentRole> {
         "highlight" => ComponentRole::Highlight,
         _ => ComponentRole::Generic,
     })
+}
+
+/// Edge labels: strip quotes and reduce embedded HTML (`<br/>` → newline,
+/// other tags dropped).
+fn clean_edge_label(raw: &str) -> String {
+    let trimmed = raw.trim().trim_matches('"');
+    let (text, _) = sanitize_html_label(trimmed.to_string());
+    text
+}
+
+/// Mermaid-compat: blog diagrams embed HTML inside labels —
+/// `<img src="/icons/mdi-laptop.svg" ...>`, `<br/>`, `<span class='sub'>…</span>`.
+/// Layra labels are plain text + an icon slot, so:
+/// - `<img src=".../icons/{pack}-{name}.svg">` → icon `pack:name`
+/// - `<br>`/`<br/>` → newline
+/// - any other tag → stripped, inner text kept
+fn sanitize_html_label(label: String) -> (String, Option<String>) {
+    if !label.contains('<') {
+        return (label, None);
+    }
+
+    let mut icon = None;
+    let mut text = String::with_capacity(label.len());
+    let mut rest = label.as_str();
+
+    while let Some(lt) = rest.find('<') {
+        text.push_str(&rest[..lt]);
+        let Some(gt_rel) = rest[lt..].find('>') else {
+            text.push_str(&rest[lt..]);
+            rest = "";
+            break;
+        };
+        let tag = &rest[lt + 1..lt + gt_rel];
+        let tag_name = tag
+            .trim_start_matches('/')
+            .split([' ', '/', '\t'])
+            .next()
+            .unwrap_or("")
+            .to_ascii_lowercase();
+
+        match tag_name.as_str() {
+            "br" => text.push('\n'),
+            "img" => {
+                if icon.is_none() {
+                    icon = img_src_to_icon(tag);
+                }
+            }
+            _ => {} // drop the tag, keep surrounding text
+        }
+        rest = &rest[lt + gt_rel + 1..];
+    }
+    text.push_str(rest);
+
+    // Collapse leftover whitespace per line.
+    let cleaned = text
+        .split('\n')
+        .map(|l| l.split_whitespace().collect::<Vec<_>>().join(" "))
+        .filter(|l| !l.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    (cleaned, icon)
+}
+
+/// Convert literal `\n` escapes in labels to real newlines (Mermaid allows
+/// both `<br/>` and `\n` in quoted labels).
+fn unescape_newlines(label: String) -> String {
+    if label.contains("\\n") {
+        label.replace("\\n", "\n")
+    } else {
+        label
+    }
+}
+
+/// `src=".../icons/mdi-laptop.svg"` → `Some("mdi:laptop")`.
+fn img_src_to_icon(tag: &str) -> Option<String> {
+    let src_at = tag.find("src=")?;
+    let quote = tag.as_bytes().get(src_at + 4).copied()? as char;
+    let after = &tag[src_at + 5..];
+    let end = after.find(quote)?;
+    let path = &after[..end];
+
+    let file = path.rsplit('/').next()?.strip_suffix(".svg")?;
+    let (pack, name) = file.split_once('-')?;
+    Some(format!("{pack}:{name}"))
 }
 
 /// Pull `{icon:pack:name}` out of a label.

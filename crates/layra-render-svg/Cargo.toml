@@ -9,3 +9,5 @@ authors.workspace = true
 
 [dependencies]
 layra-core = { workspace = true }
+layra-icons = { workspace = true }
+layra-text = { workspace = true }

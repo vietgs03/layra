@@ -10,15 +10,21 @@ mod shapes;
 mod theme;
 
 use layra_core::{EdgeKind, EdgeStyle, Graph};
+use layra_icons::IconRegistry;
 use std::fmt::Write;
 
 pub use theme::Theme;
 
 const FONT_STACK: &str = "Inter, 'Helvetica Neue', Arial, sans-serif";
 
-/// Render `graph` to SVG. The graph must already be measured, laid out, and
-/// routed.
+/// Render `graph` to SVG without icons.
 pub fn render(graph: &Graph, theme: &Theme) -> String {
+    render_with_icons(graph, theme, None)
+}
+
+/// Render `graph` to SVG, resolving node icons from `icons` when given.
+/// The graph must already be measured, laid out, and routed.
+pub fn render_with_icons(graph: &Graph, theme: &Theme, icons: Option<&IconRegistry>) -> String {
     let bounds = graph.bounds().inflate(16.0);
     let w = bounds.width.ceil();
     let h = bounds.height.ceil();
@@ -46,7 +52,7 @@ pub fn render(graph: &Graph, theme: &Theme) -> String {
         write_edge(&mut svg, edge, theme);
     }
     for node in &graph.nodes {
-        write_node(&mut svg, node, theme);
+        write_node(&mut svg, node, theme, icons);
     }
 
     svg.push_str("</svg>");
@@ -139,21 +145,59 @@ fn write_edge(svg: &mut String, edge: &layra_core::Edge, theme: &Theme) {
     }
 }
 
-fn write_node(svg: &mut String, node: &layra_core::Node, theme: &Theme) {
+fn write_node(
+    svg: &mut String,
+    node: &layra_core::Node,
+    theme: &Theme,
+    icons: Option<&IconRegistry>,
+) {
     let role_color = theme.role_color(node.role);
     shapes::write_shape(svg, node, role_color, theme);
 
     let c = node.rect.center();
+
+    // Icon block above the label (when the icon resolves in the registry).
+    let icon_key = node
+        .icon
+        .as_deref()
+        .filter(|key| icons.is_some_and(|reg| reg.get(key).is_some()));
+
     let lines: Vec<&str> = node.label.split('\n').collect();
     let line_h = 18.0;
-    let start_y = c.y - (lines.len() as f32 - 1.0) * line_h / 2.0;
+    let icon_h = if icon_key.is_some() {
+        layra_text::ICON_SIZE + layra_text::ICON_GAP
+    } else {
+        0.0
+    };
+    let content_h = icon_h + lines.len() as f32 * line_h;
+    let top = c.y - content_h / 2.0;
+
+    if let (Some(key), Some(reg)) = (icon_key, icons) {
+        if let Some(icon) = reg.emit_svg(
+            key,
+            c.x - layra_text::ICON_SIZE / 2.0,
+            top,
+            layra_text::ICON_SIZE,
+            theme.text,
+        ) {
+            svg.push_str(&icon);
+        }
+    }
+
+    let text_start = top + icon_h + line_h / 2.0;
     for (i, line) in lines.iter().enumerate() {
+        // First line is the title; subsequent lines render smaller+dimmer
+        // (the blog's `<span class='sub'>` convention).
+        let (size, fill) = if i == 0 {
+            (14.0, theme.text)
+        } else {
+            (11.5, theme.edge_label)
+        };
         let _ = write!(
             svg,
-            r#"<text x="{:.1}" y="{:.1}" font-size="14" fill="{}" text-anchor="middle" dominant-baseline="central">{}</text>"#,
+            r#"<text x="{:.1}" y="{:.1}" font-size="{size}" fill="{fill}" text-anchor="middle" dominant-baseline="central">{}</text>"#,
             c.x,
-            start_y + i as f32 * line_h,
-            theme.text,
+            text_start + i as f32 * line_h,
             escape(line)
         );
     }

@@ -6,7 +6,13 @@
 //! Also usable as a plain Rust library (`render_svg`) — the CLI and any
 //! server-side rendering reuse the same entry point.
 
+use std::sync::{Mutex, OnceLock};
 use wasm_bindgen::prelude::*;
+
+fn registry() -> &'static Mutex<layra_icons::IconRegistry> {
+    static REG: OnceLock<Mutex<layra_icons::IconRegistry>> = OnceLock::new();
+    REG.get_or_init(|| Mutex::new(layra_icons::IconRegistry::new()))
+}
 
 /// Full pipeline: diagram source in, SVG string out.
 pub fn render_svg(source: &str, dark: bool) -> Result<String, String> {
@@ -19,7 +25,19 @@ pub fn render_svg(source: &str, dark: bool) -> Result<String, String> {
     } else {
         layra_render_svg::Theme::light()
     };
-    Ok(layra_render_svg::render(&graph, &theme))
+    let reg = registry().lock().map_err(|e| e.to_string())?;
+    let icons = (!reg.is_empty()).then_some(&*reg);
+    Ok(layra_render_svg::render_with_icons(&graph, &theme, icons))
+}
+
+/// Load an Iconify-format icon pack JSON. Returns the number of icons
+/// added. Call any number of times; packs merge.
+pub fn load_icon_pack(json: &str) -> Result<usize, String> {
+    registry()
+        .lock()
+        .map_err(|e| e.to_string())?
+        .load_pack(json)
+        .map_err(|e| e.to_string())
 }
 
 /// JS-facing entry point. Throws a JS error with the parse message on
@@ -27,6 +45,12 @@ pub fn render_svg(source: &str, dark: bool) -> Result<String, String> {
 #[wasm_bindgen]
 pub fn render(source: &str, dark: bool) -> Result<String, JsError> {
     render_svg(source, dark).map_err(|e| JsError::new(&e))
+}
+
+/// JS-facing icon pack loader.
+#[wasm_bindgen]
+pub fn load_icons(json: &str) -> Result<usize, JsError> {
+    load_icon_pack(json).map_err(|e| JsError::new(&e))
 }
 
 #[cfg(test)]

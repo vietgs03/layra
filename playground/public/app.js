@@ -2,25 +2,17 @@
 // Renders on every input event — the engine is fast enough that the only
 // throttle we need is requestAnimationFrame coalescing.
 
-import init, { render } from "./pkg/layra_wasm.js";
+import init, { render, load_icons } from "./pkg/layra_wasm.js";
 
 const DEFAULT_SOURCE = `flowchart LR
-  client(["Browser"]):::client --> cdn["CDN"]:::external
-  cdn --> api["API Gateway"]:::gateway
-  api --> auth["Auth Service"]:::service
-  api --> orders["Order Service"]:::service
-  api --> users["User Service"]:::service
-  orders -->|persist| db[("Postgres")]:::database
-  orders -.->|events| mq{{Kafka}}
-  mq -.-> notif["Notification Svc"]:::service
-  users --> cache(("Redis")):::cache
-  users --> db
-  auth --> cache
-  subgraph data["Data Plane"]
-    db
-    mq
-    cache
-  end
+  laptop["{icon:mdi:laptop} Your laptop\\n192.168.1.42:51000"]:::client
+  router["{icon:mdi:router-wireless} Router (NAT)\\n translation table"]:::highlight
+  target["{icon:mdi:web} example.com\\n93.184.216.34:443"]:::external
+
+  laptop -->|outbound| router
+  router ==>|rewritten src| target
+  target -.->|reply| router
+  router -.->|rewritten dst| laptop
 `;
 
 const AUTOSAVE_KEY = "layra-playground-source";
@@ -224,6 +216,18 @@ async function loadFromHash() {
 
 async function main() {
   await init();
+
+  // Icon pack (extracted from blog.viethx.com usage): non-blocking-critical,
+  // but await it so the first render already has icons.
+  try {
+    const res = await fetch("./icons-blog.json");
+    if (res.ok) {
+      const n = load_icons(await res.text());
+      console.info(`layra: ${n} icons loaded`);
+    }
+  } catch (e) {
+    console.warn("layra: icon pack failed to load", e);
+  }
 
   const fromHash = await loadFromHash();
   if (!fromHash) {

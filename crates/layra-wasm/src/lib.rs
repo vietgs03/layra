@@ -69,6 +69,9 @@ pub fn render_svg_lenient(source: &str, dark: bool) -> Result<(String, Vec<Strin
             }
             layra_render_svg::render_gantt(&chart, &theme)
         }
+        layra_core::Document::Timeline(tl) => layra_render_svg::render_timeline(&tl, &theme),
+        layra_core::Document::Journey(j) => layra_render_svg::render_journey(&j, &theme),
+        layra_core::Document::Git(g) => layra_render_svg::render_git(&g, &theme),
     };
     Ok((svg, warnings))
 }
@@ -134,6 +137,15 @@ pub fn layout_json(source: &str) -> Result<String, JsError> {
         }
         layra_core::Document::Gantt(chart) => {
             serde_json::json!({ "kind": "gantt", "gantt": chart })
+        }
+        layra_core::Document::Timeline(tl) => {
+            serde_json::json!({ "kind": "timeline", "timeline": tl })
+        }
+        layra_core::Document::Journey(j) => {
+            serde_json::json!({ "kind": "journey", "journey": j })
+        }
+        layra_core::Document::Git(g) => {
+            serde_json::json!({ "kind": "git", "git": g })
         }
     };
     serde_json::to_string(&value).map_err(|e| JsError::new(&e.to_string()))

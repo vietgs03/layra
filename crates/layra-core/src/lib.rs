@@ -17,7 +17,10 @@ pub mod graph;
 pub mod sequence;
 pub mod style;
 
-pub use charts::{GanttChart, GanttSection, GanttTask, PieChart, TaskStatus};
+pub use charts::{
+    GanttChart, GanttSection, GanttTask, GitGraph, GitOp, Journey, JourneySection, JourneyTask,
+    PieChart, TaskStatus, Timeline, TimelinePeriod,
+};
 pub use geometry::{Point, Rect, Size};
 pub use graph::{Direction, Edge, EdgeId, EdgeKind, Graph, Node, NodeId, Subgraph, SubgraphId};
 pub use sequence::{
@@ -35,4 +38,7 @@ pub enum Document {
     Sequence(SequenceDiagram),
     Pie(PieChart),
     Gantt(GanttChart),
+    Timeline(Timeline),
+    Journey(Journey),
+    Git(GitGraph),
 }

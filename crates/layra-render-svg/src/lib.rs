@@ -8,6 +8,7 @@
 
 mod fmt;
 mod gantt;
+mod linear;
 mod pie;
 mod sequence;
 mod shapes;
@@ -18,6 +19,7 @@ use layra_icons::IconRegistry;
 use std::fmt::Write;
 
 pub use gantt::render_gantt;
+pub use linear::{render_git, render_journey, render_timeline};
 pub use pie::render_pie;
 pub use sequence::render_sequence;
 pub use theme::Theme;

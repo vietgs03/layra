@@ -33,6 +33,9 @@ use thiserror::Error;
 mod class;
 mod er;
 mod gantt;
+mod git;
+mod linear;
+mod mindmap;
 mod pie;
 mod sequence;
 mod state;
@@ -85,6 +88,22 @@ pub fn parse_document_lenient(source: &str) -> (Document, Vec<ParseError>) {
     if header.starts_with("erDiagram") {
         let (graph, warnings) = er::parse_lenient(&lines[1..]);
         return (Document::Graph(graph), warnings);
+    }
+    if header == "mindmap" {
+        let (graph, warnings) = mindmap::parse_lenient(&lines[1..], source);
+        return (Document::Graph(graph), warnings);
+    }
+    if header == "timeline" {
+        let (tl, warnings) = linear::parse_timeline(&lines[1..]);
+        return (Document::Timeline(tl), warnings);
+    }
+    if header == "journey" {
+        let (j, warnings) = linear::parse_journey(&lines[1..]);
+        return (Document::Journey(j), warnings);
+    }
+    if header.starts_with("gitGraph") {
+        let (g, warnings) = git::parse_lenient(&lines[1..]);
+        return (Document::Git(g), warnings);
     }
     if header == "gantt" {
         let (chart, warnings) = gantt::parse_lenient(&lines[1..]);

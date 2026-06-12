@@ -95,3 +95,20 @@ fn gantt_end_to_end() {
     // Axis ticks exist (MM-DD labels).
     assert!(svg.contains("01-"), "date axis ticks");
 }
+
+#[test]
+fn mindmap_timeline_journey_git_end_to_end() {
+    let cases = [
+        ("mindmap\n  root((Layra))\n    Engine\n      Layout\n    Playground", "Layra"),
+        ("timeline\n  title History\n  section 2024\n  Q1 : idea : prototype\n  Q2 : launch", "prototype"),
+        ("journey\n  title My day\n  section Morning\n  Wake up: 3: Me\n  Coffee: 5: Me, Cat", "Coffee"),
+        ("gitGraph\n  commit\n  branch develop\n  commit\n  checkout main\n  merge develop tag: \"v1.0\"", "v1.0"),
+    ];
+    for (src, needle) in cases {
+        for dark in [false, true] {
+            let svg = layra_wasm::render_svg(src, dark).unwrap();
+            assert!(svg.contains(needle), "missing {needle:?} for {src:?}");
+            assert!(svg.starts_with("<svg") && svg.ends_with("</svg>"));
+        }
+    }
+}

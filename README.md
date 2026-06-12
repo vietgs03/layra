@@ -50,6 +50,10 @@ Fast enough to re-render on every keystroke.
 | `erDiagram` | ✅ | attribute blocks, crow's-foot cardinality labels |
 | `pie` | ✅ | title, showData, percentage labels, legend |
 | `gantt` | ✅ | sections, after-dependencies, done/active/crit, milestones, date axis |
+| `mindmap` | ✅ | indentation hierarchy, Mermaid shapes, layered tree layout |
+| `timeline` | ✅ | sections (colored), periods, event stacks, continuations |
+| `journey` | ✅ | score curve (1-5), colored faces, actors, section bands |
+| `gitGraph` | ✅ | branch lanes, fork/merge curves, commit ids + tags |
 
 ## Syntax
 

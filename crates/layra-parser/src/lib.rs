@@ -505,11 +505,7 @@ fn sanitize_html_label(label: String) -> (String, Option<String>) {
 
         match tag_name.as_str() {
             "br" => text.push('\n'),
-            "img" => {
-                if icon.is_none() {
-                    icon = img_src_to_icon(tag);
-                }
-            }
+            "img" if icon.is_none() => icon = img_src_to_icon(tag),
             _ => {} // drop the tag, keep surrounding text
         }
         rest = &rest[lt + gt_rel + 1..];

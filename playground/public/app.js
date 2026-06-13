@@ -1358,14 +1358,14 @@ const COMMANDS = [
   { id: "zoom-out", title: "Zoom out", hint: "−", icon: "－", run: () => smoothZoom(...centerXY(), 1 / 1.25) },
   { id: "zoom-reset", title: "Reset zoom to 100%", icon: "⌖", run: () => smoothZoom(...centerXY(), 1 / view.scale) },
   { id: "reset-layout", title: "Reset layout", desc: "Clear dragged nodes & re-fit", icon: "↺", run: resetLayout },
-  { id: "export-svg", title: "Export SVG", icon: "🖼", run: () => exportSvg() },
-  { id: "export-png-1", title: "Export PNG · 1×", icon: "🖼", run: () => exportPng(1) },
-  { id: "export-png-2", title: "Export PNG · 2×", icon: "🖼", run: () => exportPng(2) },
-  { id: "export-png-4", title: "Export PNG · 4×", icon: "🖼", run: () => exportPng(4) },
-  { id: "copy-png", title: "Copy PNG to clipboard", icon: "📋", run: () => copyPngToClipboard(2) },
-  { id: "toggle-theme", title: "Toggle dark mode", hint: "D", icon: "🌓", run: () => toggleTheme() },
+  { id: "export-svg", title: "Export SVG", icon: "▤", run: () => exportSvg() },
+  { id: "export-png-1", title: "Export PNG · 1×", icon: "▤", run: () => exportPng(1) },
+  { id: "export-png-2", title: "Export PNG · 2×", icon: "▤", run: () => exportPng(2) },
+  { id: "export-png-4", title: "Export PNG · 4×", icon: "▤", run: () => exportPng(4) },
+  { id: "copy-png", title: "Copy PNG to clipboard", icon: "⧉", run: () => copyPngToClipboard(2) },
+  { id: "toggle-theme", title: "Toggle dark mode", hint: "D", icon: "◐", run: () => toggleTheme() },
   { id: "examples", title: "Open examples gallery", icon: "✦", run: () => openGallery() },
-  { id: "share", title: "Copy shareable link", icon: "🔗", run: () => shareLink() },
+  { id: "share", title: "Copy shareable link", icon: "↗", run: () => shareLink() },
 ];
 
 const cmdk = $("cmdk");

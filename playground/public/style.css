@@ -142,6 +142,9 @@ main { display: flex; flex: 1; min-height: 0; }
   transform-origin: 0 0;
   will-change: transform;
 }
+/* Smooth, programmatic zoom only — toggled per-interaction in app.js.
+   Panning never carries this class, so dragging stays 1:1 with the cursor. */
+#preview.zooming { transition: transform 0.2s cubic-bezier(0.22, 0.61, 0.36, 1); }
 #preview svg {
   display: block;
   /* Nodes dragged beyond the original viewBox must stay visible —
@@ -188,9 +191,46 @@ main { display: flex; flex: 1; min-height: 0; }
   .editor-pane { width: 100% !important; height: 45%; }
   #splitter { display: none; }
 }
-
-[data-node] { cursor: move; }
 [data-node]:hover > * { filter: brightness(0.96); }
 
 #viewport.pan-mode, #viewport.pan-mode [data-node] { cursor: grab; }
 #viewport.pan-mode.panning { cursor: grabbing; }
+
+[data-node] { cursor: move; }
+
+/* ---------------- minimap (bottom-left of preview) ---------------- */
+.minimap {
+  position: absolute;
+  left: 14px;
+  bottom: 14px;
+  width: 190px;
+  height: 130px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--panel) 85%, transparent);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 2px 10px rgba(0,0,0,0.12);
+  overflow: hidden;
+  cursor: pointer;
+  z-index: 5;
+}
+.minimap[hidden] { display: none; }
+#minimap-canvas {
+  position: absolute;
+  inset: 0;
+}
+#minimap-canvas svg {
+  position: absolute;
+  display: block;
+  pointer-events: none;
+}
+#minimap-view {
+  position: absolute;
+  border: 1.5px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-radius: 3px;
+  pointer-events: none;
+  box-shadow: 0 0 0 9999px color-mix(in srgb, var(--bg) 28%, transparent);
+}
+.minimap.dragging { cursor: grabbing; }
+@media (max-width: 760px) { .minimap { display: none !important; } }

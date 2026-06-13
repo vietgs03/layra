@@ -142,6 +142,7 @@ let userTouchedView = false; // stop auto-fit once the user pans/zooms
 function applyView() {
   preview.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.scale})`;
   $("zoom-level").textContent = `${Math.round(view.scale * 100)}%`;
+  updateMinimapView();
 }
 
 function zoomAt(cx, cy, factor) {
@@ -154,7 +155,17 @@ function zoomAt(cx, cy, factor) {
   applyView();
 }
 
-function fitToView() {
+// Animated zoom for buttons/keyboard: a brief CSS transition on the
+// transform. Never used for wheel/pan (those must track input 1:1).
+let zoomTransitionTimer = null;
+function smoothZoom(cx, cy, factor) {
+  preview.classList.add("zooming");
+  zoomAt(cx, cy, factor);
+  clearTimeout(zoomTransitionTimer);
+  zoomTransitionTimer = setTimeout(() => preview.classList.remove("zooming"), 220);
+}
+
+function fitToView(animate = false) {
   const svgEl = preview.querySelector("svg");
   if (!svgEl) return;
   const vw = viewport.clientWidth;
@@ -163,12 +174,134 @@ function fitToView() {
   const h = svgEl.viewBox.baseVal.height || svgEl.clientHeight;
   if (!w || !h) return;
   const scale = Math.min((vw - 64) / w, (vh - 64) / h, 2);
+  if (animate) {
+    preview.classList.add("zooming");
+    clearTimeout(zoomTransitionTimer);
+    zoomTransitionTimer = setTimeout(() => preview.classList.remove("zooming"), 220);
+  }
   view.scale = Math.max(0.1, scale);
   view.x = (vw - w * view.scale) / 2;
   view.y = (vh - h * view.scale) / 2;
   userTouchedView = false;
   applyView();
 }
+
+/* ---------------- minimap ---------------- */
+// A theme-aware bird's-eye view in the bottom-left of the preview pane.
+// Shows the whole diagram with a viewport rectangle; click/drag jumps the
+// main view. Rebuilds its thumbnail on render, tracks the rect on pan/zoom.
+
+const minimap = $("minimap");
+const minimapCanvas = $("minimap-canvas");
+const minimapView = $("minimap-view");
+let minimapGeom = null; // { ms, mox, moy, W, H } cached for view-rect math
+
+function updateMinimapContent() {
+  const svgEl = preview.querySelector("svg");
+  if (!svgEl) {
+    minimap.hidden = true;
+    minimapGeom = null;
+    return;
+  }
+  const W = svgEl.viewBox.baseVal.width || svgEl.clientWidth;
+  const H = svgEl.viewBox.baseVal.height || svgEl.clientHeight;
+  if (!W || !H) {
+    minimap.hidden = true;
+    minimapGeom = null;
+    return;
+  }
+  // Unhide before measuring: while display:none the element has 0 size.
+  minimap.hidden = false;
+  const pad = 8;
+  const mw = minimap.clientWidth - pad * 2;
+  const mh = minimap.clientHeight - pad * 2;
+  const ms = Math.min(mw / W, mh / H);
+  const mox = pad + (mw - W * ms) / 2;
+  const moy = pad + (mh - H * ms) / 2;
+  minimapGeom = { ms, mox, moy, W, H };
+
+  // Clone the rendered SVG; namespace its ids so its marker/gradient refs
+  // never collide with the live preview's defs.
+  const clone = svgEl.cloneNode(true);
+  const idMap = new Map();
+  for (const el of clone.querySelectorAll("[id]")) {
+    const fresh = `mm-${el.id}`;
+    idMap.set(el.id, fresh);
+    el.id = fresh;
+  }
+  const refAttrs = ["href", "xlink:href", "fill", "stroke", "marker-start", "marker-end", "marker-mid", "mask", "clip-path", "filter"];
+  for (const el of clone.querySelectorAll("*")) {
+    for (const attr of refAttrs) {
+      const v = el.getAttribute(attr);
+      if (!v) continue;
+      const m = /^url\(#(.+?)\)$|^#(.+)$/.exec(v.trim());
+      if (m) {
+        const old = m[1] ?? m[2];
+        if (idMap.has(old)) {
+          el.setAttribute(attr, v.startsWith("url(") ? `url(#${idMap.get(old)})` : `#${idMap.get(old)}`);
+        }
+      }
+    }
+  }
+  clone.removeAttribute("style");
+  clone.setAttribute("width", `${W * ms}`);
+  clone.setAttribute("height", `${H * ms}`);
+  clone.style.left = `${mox}px`;
+  clone.style.top = `${moy}px`;
+  minimapCanvas.replaceChildren(clone);
+  minimap.hidden = false;
+  updateMinimapView();
+}
+
+function updateMinimapView() {
+  if (!minimapGeom || minimap.hidden) return;
+  const { ms, mox, moy, W, H } = minimapGeom;
+  const vw = viewport.clientWidth;
+  const vh = viewport.clientHeight;
+  // World (SVG-unit) region currently visible in the main viewport.
+  const worldLeft = -view.x / view.scale;
+  const worldTop = -view.y / view.scale;
+  const worldW = vw / view.scale;
+  const worldH = vh / view.scale;
+  // Clamp to the diagram bounds so the rect stays meaningful.
+  const l = Math.max(0, worldLeft);
+  const t = Math.max(0, worldTop);
+  const r = Math.min(W, worldLeft + worldW);
+  const b = Math.min(H, worldTop + worldH);
+  minimapView.style.left = `${mox + l * ms}px`;
+  minimapView.style.top = `${moy + t * ms}px`;
+  minimapView.style.width = `${Math.max(2, (r - l) * ms)}px`;
+  minimapView.style.height = `${Math.max(2, (b - t) * ms)}px`;
+}
+
+// Click/drag on the minimap recenters the main view on that diagram point.
+function minimapJump(e) {
+  if (!minimapGeom) return;
+  const { ms, mox, moy } = minimapGeom;
+  const rect = minimap.getBoundingClientRect();
+  const sx = (e.clientX - rect.left - mox) / ms; // diagram x
+  const sy = (e.clientY - rect.top - moy) / ms;  // diagram y
+  // Center the main viewport on (sx, sy).
+  view.x = viewport.clientWidth / 2 - sx * view.scale;
+  view.y = viewport.clientHeight / 2 - sy * view.scale;
+  userTouchedView = true;
+  applyView();
+}
+
+minimap.addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  minimap.classList.add("dragging");
+  minimap.setPointerCapture(e.pointerId);
+  minimapJump(e);
+});
+minimap.addEventListener("pointermove", (e) => {
+  if (minimap.hasPointerCapture(e.pointerId)) minimapJump(e);
+});
+minimap.addEventListener("pointerup", (e) => {
+  minimap.classList.remove("dragging");
+  if (minimap.hasPointerCapture(e.pointerId)) minimap.releasePointerCapture(e.pointerId);
+});
 
 viewport.addEventListener("wheel", (e) => {
   e.preventDefault();
@@ -280,10 +413,10 @@ window.addEventListener("keyup", (e) => {
 });
 
 $("zoom-in").addEventListener("click", () =>
-  zoomAt(viewport.clientWidth / 2, viewport.clientHeight / 2, 1.25));
+  smoothZoom(viewport.clientWidth / 2, viewport.clientHeight / 2, 1.25));
 $("zoom-out").addEventListener("click", () =>
-  zoomAt(viewport.clientWidth / 2, viewport.clientHeight / 2, 1 / 1.25));
-$("zoom-fit").addEventListener("click", fitToView);
+  smoothZoom(viewport.clientWidth / 2, viewport.clientHeight / 2, 1 / 1.25));
+$("zoom-fit").addEventListener("click", () => fitToView(true));
 
 /* ---------------- split pane ---------------- */
 
@@ -387,6 +520,7 @@ function doRender() {
     swapSvg(svg);
     applyOffsets();
     if (!userTouchedView) fitToView();
+    updateMinimapContent();
     resolveMissingIcons(src);
     if (warnings.length) {
       status.textContent = `rendered, ${warnings.length} skipped — ${warnings[0]}`;
@@ -612,6 +746,7 @@ async function main() {
   window.addEventListener("hashchange", loadFromHash);
   window.addEventListener("resize", () => {
     if (!userTouchedView) fitToView();
+    else updateMinimapView();
   });
 
   $("btn-theme").addEventListener("click", () => {
@@ -648,9 +783,9 @@ async function main() {
   window.addEventListener("keydown", (e) => {
     if (document.activeElement === editor) return;
     const center = [viewport.clientWidth / 2, viewport.clientHeight / 2];
-    if (e.key === "+" || e.key === "=") zoomAt(...center, 1.25);
-    else if (e.key === "-") zoomAt(...center, 1 / 1.25);
-    else if (e.key === "0") fitToView();
+    if (e.key === "+" || e.key === "=") smoothZoom(...center, 1.25);
+    else if (e.key === "-") smoothZoom(...center, 1 / 1.25);
+    else if (e.key === "0") fitToView(true);
     else if (e.key === "d" || e.key === "D") $("btn-theme").click();
   });
 }

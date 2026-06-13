@@ -74,7 +74,14 @@
       </div>
     </aside>
     <div class="editor-col">
-      <textarea id="editor" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
+      <div class="editor-bar">
+        <span class="editor-bar-label">EDITOR</span>
+        <span id="type-badge" class="type-badge" data-type="">—</span>
+      </div>
+      <div class="editor-scroll" id="editor-scroll">
+        <div class="gutter" id="gutter" aria-hidden="true"></div>
+        <textarea id="editor" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
+      </div>
       <div id="status" class="status ok">ready</div>
     </div>
   </section>

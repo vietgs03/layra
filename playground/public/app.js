@@ -812,20 +812,208 @@ function detectType(src) {
 }
 
 function markActiveTemplate(src) {
+  // Reflect the live diagram type on the "New" trigger so the switcher always
+  // shows what kind of diagram you're editing.
   const type = detectType(src);
-  for (const btn of $("templates").querySelectorAll("button")) {
-    btn.classList.toggle("active", btn.dataset.tpl === type);
+  const label = type ? (TYPE_LABELS[type] ?? type) : null;
+  const btn = $("btn-new");
+  if (!btn) return;
+  const sub = btn.querySelector(".new-current");
+  if (sub) sub.textContent = label ? ` · ${label}` : "";
+  for (const item of newList.querySelectorAll("[data-tpl]")) {
+    item.classList.toggle("active", item.dataset.tpl === type);
   }
 }
 
-$("templates").addEventListener("click", (e) => {
-  const tpl = e.target?.dataset?.tpl;
-  if (!tpl || !TEMPLATES[tpl]) return;
-  editor.value = TEMPLATES[tpl];
+/* ---------------- diagram-type quick switcher ("New") ---------------- */
+// Clean, minimal starter templates — one per diagram type plus "AWS
+// architecture" (built from the bundled {icon:aws:*} infra icons). These are
+// intentionally smaller than the rich examples gallery: a fast "new diagram of
+// type X" you can build on, not a showcase.
+
+const STARTERS = {
+  flowchart: `flowchart LR
+  start(["Start"]) --> step["Do something"]
+  step --> decision{"OK?"}
+  decision -->|yes| done(["Done"])
+  decision -->|no| step
+`,
+  sequence: `sequenceDiagram
+  participant A as Alice
+  participant B as Bob
+  A->>B: Hello Bob
+  B-->>A: Hi Alice
+`,
+  state: `stateDiagram-v2
+  [*] --> Idle
+  Idle --> Running : start
+  Running --> Idle : stop
+  Running --> [*] : done
+`,
+  class: `classDiagram
+  class Shape {
+    +area() float
+  }
+  class Circle {
+    +radius float
+  }
+  Shape <|-- Circle
+`,
+  er: `erDiagram
+  USER ||--o{ POST : writes
+  USER {
+    int id PK
+    string name
+  }
+  POST {
+    int id PK
+    string title
+  }
+`,
+  gantt: `gantt
+  title New plan
+  dateFormat YYYY-MM-DD
+  section Phase 1
+  Task A :a1, 2026-01-01, 7d
+  Task B :after a1, 5d
+`,
+  pie: `pie title Distribution
+  "A" : 40
+  "B" : 35
+  "C" : 25
+`,
+  mindmap: `mindmap
+  root((Idea))
+    Branch 1
+      Leaf
+    Branch 2
+`,
+  gitGraph: `gitGraph
+  commit
+  branch feature
+  commit
+  checkout main
+  merge feature
+`,
+  aws: `flowchart LR
+  user["{icon:aws:cdn} CloudFront"]:::client
+  api["{icon:aws:gateway} API Gateway"]
+  fn["{icon:aws:lambda} Lambda"]:::highlight
+  db[("{icon:aws:database} DynamoDB")]:::database
+
+  user --> api
+  api --> fn
+  fn --> db
+`,
+};
+
+// Display order, icons and one-word descriptors for the dropdown. "AWS
+// architecture" is featured at the top; the rest follow in a logical order.
+const STARTER_ITEMS = [
+  { key: "aws", label: "AWS architecture", ic: "☁", sub: "infra icons", featured: true },
+  { key: "_sep" },
+  { key: "flowchart", label: "Flowchart", ic: "▱", sub: "boxes & arrows" },
+  { key: "sequence", label: "Sequence", ic: "⇄", sub: "messages" },
+  { key: "state", label: "State machine", ic: "◉", sub: "states" },
+  { key: "class", label: "Class", ic: "◰", sub: "types" },
+  { key: "er", label: "Entity-relationship", ic: "▤", sub: "tables" },
+  { key: "gantt", label: "Gantt", ic: "▦", sub: "timeline" },
+  { key: "pie", label: "Pie", ic: "◔", sub: "shares" },
+  { key: "mindmap", label: "Mindmap", ic: "✸", sub: "ideas" },
+  { key: "gitGraph", label: "Git graph", ic: "⎇", sub: "branches" },
+];
+
+const newMenu = $("new-menu");
+const newTrigger = $("btn-new");
+const newList = $("new-list");
+
+// Map a starter key to the detected-type key used for the active highlight.
+const STARTER_TYPE = { gitGraph: "git", aws: "flowchart" };
+
+function buildNewMenu() {
+  const frag = document.createDocumentFragment();
+  for (const it of STARTER_ITEMS) {
+    if (it.key === "_sep") {
+      const sep = document.createElement("div");
+      sep.className = "menu-sep";
+      frag.appendChild(sep);
+      continue;
+    }
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.setAttribute("role", "menuitem");
+    btn.dataset.starter = it.key;
+    btn.dataset.tpl = STARTER_TYPE[it.key] ?? it.key;
+    if (it.featured) btn.classList.add("new-featured");
+    btn.innerHTML =
+      `<span class="new-ic" aria-hidden="true">${it.ic}</span>` +
+      `<span class="new-label">${it.label}</span>` +
+      `<span class="new-sub">${it.sub}</span>`;
+    frag.appendChild(btn);
+  }
+  newList.replaceChildren(frag);
+}
+
+function loadStarter(key) {
+  const src = STARTERS[key];
+  if (!src) return;
+  editor.value = src;
   nodeOffsets = new Map();
   userTouchedView = false;
+  // Put the caret at the end so the user can keep typing.
+  editor.focus();
+  editor.setSelectionRange(src.length, src.length);
   scheduleRender();
-});
+  fitToView();
+}
+
+// Keyboard-accessible "New" dropdown: mirrors the Export menu pattern
+// (Enter/Space/ArrowDown opens, arrows move, Esc/Tab closes, click-outside).
+function setupNewMenu() {
+  buildNewMenu();
+  const items = () => [...newList.querySelectorAll("[role=menuitem]")];
+
+  const open = () => {
+    newList.hidden = false;
+    newTrigger.setAttribute("aria-expanded", "true");
+    items()[0]?.focus();
+  };
+  const close = (focusTrigger = false) => {
+    newList.hidden = true;
+    newTrigger.setAttribute("aria-expanded", "false");
+    if (focusTrigger) newTrigger.focus();
+  };
+  const toggle = () => (newList.hidden ? open() : close());
+
+  newTrigger.addEventListener("click", (e) => { e.stopPropagation(); toggle(); });
+  newTrigger.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown" || e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      open();
+    }
+  });
+
+  newList.addEventListener("click", (e) => {
+    const item = e.target.closest("[data-starter]");
+    if (!item) return;
+    loadStarter(item.dataset.starter);
+    close(true);
+  });
+  newList.addEventListener("keydown", (e) => {
+    const list = items();
+    const idx = list.indexOf(document.activeElement);
+    if (e.key === "ArrowDown") { e.preventDefault(); list[(idx + 1) % list.length].focus(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); list[(idx - 1 + list.length) % list.length].focus(); }
+    else if (e.key === "Home") { e.preventDefault(); list[0].focus(); }
+    else if (e.key === "End") { e.preventDefault(); list[list.length - 1].focus(); }
+    else if (e.key === "Escape") { e.preventDefault(); close(true); }
+    else if (e.key === "Tab") close();
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!newList.hidden && !e.target.closest("#new-menu")) close();
+  });
+}
 
 /* ---------------- examples gallery / onboarding ---------------- */
 // A tasteful gallery of starter diagrams (one per diagram type plus an AWS
@@ -1630,6 +1818,7 @@ async function main() {
   applyTheme();
   applyAnimateEdges();
   buildInfraPalette();
+  setupNewMenu();
   doRender();
   fitToView();
 

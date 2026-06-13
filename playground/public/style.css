@@ -64,6 +64,49 @@ header {
 .templates button:hover { color: var(--text); background: var(--panel); }
 .templates button.active { color: var(--accent); border-color: var(--border); background: var(--panel); }
 
+/* ---------------- diagram-type quick switcher ("New") ---------------- */
+/* A compact dropdown to start a fresh diagram of any type from a clean
+   minimal starter (distinct from the richer examples gallery). Takes the
+   header's flex space so the actions group stays right-aligned. */
+.switcher { flex: 1; display: flex; align-items: center; }
+.new-plus { font-size: 14px; line-height: 1; color: var(--accent); }
+.new-list {
+  min-width: 220px;
+  max-height: min(70vh, 460px);
+  overflow-y: auto;
+  padding: 5px;
+}
+.new-list button[role="menuitem"] {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+}
+.new-list .new-ic {
+  width: 18px;
+  text-align: center;
+  color: var(--dim);
+  font-size: 13px;
+  flex: none;
+}
+.new-list button:hover .new-ic,
+.new-list button:focus-visible .new-ic { color: var(--accent); }
+.new-list .new-label { flex: 1; }
+.new-list .new-sub {
+  font-size: 11px;
+  color: var(--dim);
+  white-space: nowrap;
+}
+.new-list .menu-sep { height: 1px; background: var(--border); margin: 5px 4px; }
+.new-list .new-section {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dim);
+  padding: 6px 8px 3px;
+}
+.new-list button.new-featured .new-ic { color: var(--accent); }
+
 .actions { display: flex; gap: 6px; flex: none; align-items: center; }
 .actions button {
   font: inherit;

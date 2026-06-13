@@ -26,6 +26,7 @@ fn link(g: &mut Graph, a: layra_core::NodeId, b: layra_core::NodeId) {
         points: vec![],
         label_pos: None,
         end_labels: None,
+        animated: false,
     });
 }
 

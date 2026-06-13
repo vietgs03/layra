@@ -178,6 +178,7 @@ mod tests {
                 points: vec![],
                 label_pos: None,
                 end_labels: None,
+                animated: false,
             });
         }
         let sga = g.add_subgraph(Subgraph {

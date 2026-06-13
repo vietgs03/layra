@@ -143,6 +143,7 @@ mod tests {
             points: vec![],
             label_pos: None,
             end_labels: None,
+            animated: false,
         }
     }
 

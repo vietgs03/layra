@@ -19,6 +19,7 @@
 <header role="banner">
   <div class="brand">
     <span class="logo">◆</span> <strong>Layra</strong>
+    <span class="brand-pitch">diagrams at the speed of thought</span>
     <span class="tag"><span id="perf" aria-hidden="true">—</span></span>
   </div>
   <div class="switcher" id="switcher">
@@ -31,6 +32,7 @@
   </div>
   <div class="actions" role="toolbar" aria-label="Diagram actions">
     <button id="btn-examples" title="Browse example diagrams">Examples</button>
+    <button id="btn-help" class="icon-btn" title="Help &amp; shortcuts (?)" aria-label="Help and keyboard shortcuts">?</button>
     <button id="btn-animate" class="icon-btn" title="Animate edges (A)" aria-label="Animate edges" aria-pressed="false">⇝</button>
     <button id="btn-theme" class="icon-btn" title="Toggle dark mode (D)" aria-label="Toggle dark mode" aria-pressed="false">🌓</button>
     <button id="btn-share" title="Copy shareable link">Share</button>
@@ -47,6 +49,10 @@
         <button role="menuitem" data-export="copy-png">Copy PNG to clipboard</button>
       </div>
     </div>
+    <a id="btn-star" class="star-link" href="https://github.com/vietgs03/layra"
+       target="_blank" rel="noopener noreferrer" title="Star Layra on GitHub">
+      <span class="star-ic" aria-hidden="true">★</span> <span class="star-text">Star on GitHub</span>
+    </a>
   </div>
 </header>
 
@@ -143,6 +149,55 @@
     </div>
     <div id="cmdk-list" class="cmdk-list" role="listbox" aria-label="Commands"></div>
     <div class="cmdk-empty" id="cmdk-empty" hidden>No matching commands</div>
+  </div>
+</div>
+
+<!-- Help dialog (? button / "Help" in the command palette): keyboard
+     shortcuts and a syntax cheat-sheet. Esc closes; focus is trapped. -->
+<div id="help" class="help" hidden>
+  <div class="help-backdrop"></div>
+  <div class="help-panel" role="dialog" aria-modal="true" aria-labelledby="help-title">
+    <div class="help-head">
+      <div>
+        <h2 id="help-title">Help &amp; shortcuts</h2>
+        <p class="help-sub">Layra renders a Mermaid-compatible dialect in pure Rust → WASM.</p>
+      </div>
+      <button id="help-close" class="help-close" aria-label="Close help" title="Close (Esc)">✕</button>
+    </div>
+    <div class="help-body">
+      <section class="help-col">
+        <h3>Keyboard shortcuts</h3>
+        <dl class="help-keys">
+          <dt><kbd>Ctrl</kbd>/<kbd>⌘</kbd> <kbd>K</kbd></dt><dd>Command palette</dd>
+          <dt><kbd>?</kbd></dt><dd>This help</dd>
+          <dt><kbd>+</kbd> / <kbd>−</kbd></dt><dd>Zoom in / out</dd>
+          <dt><kbd>0</kbd></dt><dd>Fit to view</dd>
+          <dt><kbd>D</kbd></dt><dd>Toggle dark mode</dd>
+          <dt><kbd>A</kbd></dt><dd>Animate edges</dd>
+          <dt><kbd>Space</kbd> + drag</dt><dd>Pan the canvas</dd>
+          <dt>Drag a node</dt><dd>Reposition it</dd>
+          <dt><kbd>Tab</kbd> in editor</dt><dd>Indent (Shift+Tab outdents)</dd>
+          <dt><kbd>Esc</kbd></dt><dd>Close any overlay</dd>
+        </dl>
+      </section>
+      <section class="help-col">
+        <h3>Syntax basics</h3>
+        <pre class="help-code">flowchart LR
+  a["Process"] --> b{"Decision?"}
+  b -->|yes| c(["Done"])
+  b -.->|no| a
+  db[("Database")]:::database</pre>
+        <ul class="help-list">
+          <li><code>--&gt;</code> arrow · <code>-.-&gt;</code> dashed · <code>==&gt;</code> thick</li>
+          <li><code>["…"]</code> box · <code>("…")</code> rounded · <code>{"…"}</code> diamond</li>
+          <li><code>[("…")]</code> database · <code>{{"…"}}</code> queue</li>
+          <li>Icons: <code>{icon:aws:lambda}</code>, <code>{icon:mdi:web}</code></li>
+          <li>Types: flowchart, sequence, state, class, er, gantt, pie, mindmap, git</li>
+        </ul>
+        <p class="help-foot">New to it? Use <strong>New ▾</strong> for a starter, or
+          <strong>Examples</strong> for full diagrams.</p>
+      </section>
+    </div>
   </div>
 </div>
 

@@ -1239,6 +1239,47 @@ window.addEventListener("keydown", (e) => {
   }
 });
 
+/* ---------------- help dialog ---------------- */
+// Keyboard shortcuts + a syntax cheat-sheet. Opened from the ? button, the "?"
+// key, or the command palette. Esc closes; focus is trapped within the panel
+// and restored to the opener on close.
+
+const help = $("help");
+let helpLastFocus = null;
+
+function openHelp() {
+  if (!help.hidden) return;
+  // Close any other overlay first so we never stack dialogs.
+  if (!cmdk.hidden) closeCmdk();
+  helpLastFocus = document.activeElement;
+  help.hidden = false;
+  requestAnimationFrame(() => $("help-close").focus());
+}
+
+function closeHelp() {
+  if (help.hidden) return;
+  help.hidden = true;
+  helpLastFocus?.focus?.();
+}
+
+$("btn-help").addEventListener("click", openHelp);
+$("help-close").addEventListener("click", closeHelp);
+help.querySelector(".help-backdrop").addEventListener("click", closeHelp);
+help.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    e.preventDefault();
+    closeHelp();
+  } else if (e.key === "Tab") {
+    // Focus trap: keep Tab within the dialog's focusable controls.
+    const focusable = help.querySelectorAll("button, a[href], [tabindex]:not([tabindex='-1'])");
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  }
+});
+
 /* ---------------- shape / snippet palette ---------------- */
 
 // Each snippet is inserted at the caret on its own line(s). `$` marks where
@@ -1774,6 +1815,8 @@ const COMMANDS = [
   { id: "toggle-theme", title: "Toggle dark mode", hint: "D", icon: "◐", run: () => toggleTheme() },
   { id: "toggle-animate", title: "Animate edges", desc: "March the dashes on edges", hint: "A", icon: "⇝", run: () => toggleAnimateEdges() },
   { id: "examples", title: "Open examples gallery", icon: "✦", run: () => openGallery() },
+  { id: "help", title: "Help & keyboard shortcuts", hint: "?", icon: "?", run: () => openHelp() },
+  { id: "star", title: "Star Layra on GitHub", icon: "★", run: () => window.open("https://github.com/vietgs03/layra", "_blank", "noopener") },
   { id: "share", title: "Copy shareable link", icon: "↗", run: () => shareLink() },
 ];
 
@@ -2038,6 +2081,7 @@ async function main() {
     else if (e.key === "0") fitToView(true);
     else if (e.key === "d" || e.key === "D") $("btn-theme").click();
     else if (e.key === "a" || e.key === "A") $("btn-animate").click();
+    else if (e.key === "?") { e.preventDefault(); openHelp(); }
     // Arrow-key panning when the canvas itself is focused (keyboard a11y).
     else if (document.activeElement === viewport &&
              ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {

@@ -50,23 +50,24 @@
     <aside class="palette" id="palette">
       <button class="palette-toggle" id="palette-toggle" title="Toggle palette" aria-label="Toggle palette" aria-expanded="true">⊟</button>
       <div class="palette-body" id="palette-body">
+        <div class="palette-hint" id="palette-hint">Click to insert · drag onto the canvas</div>
         <div class="palette-group">
           <div class="palette-group-title">Shapes</div>
-          <button class="palette-item" data-snip="rect" title="Process (rectangle)"><span class="pi-glyph">▭</span><span class="pi-label">Process</span></button>
-          <button class="palette-item" data-snip="rounded" title="Rounded box"><span class="pi-glyph">▢</span><span class="pi-label">Rounded</span></button>
-          <button class="palette-item" data-snip="stadium" title="Terminal / start-end (stadium)"><span class="pi-glyph">⬭</span><span class="pi-label">Terminal</span></button>
-          <button class="palette-item" data-snip="decision" title="Decision (diamond)"><span class="pi-glyph">◇</span><span class="pi-label">Decision</span></button>
-          <button class="palette-item" data-snip="database" title="Database (cylinder)"><span class="pi-glyph">⛁</span><span class="pi-label">Database</span></button>
-          <button class="palette-item" data-snip="queue" title="Queue (hexagon)"><span class="pi-glyph">⬡</span><span class="pi-label">Queue</span></button>
-          <button class="palette-item" data-snip="circle" title="Circle"><span class="pi-glyph">◯</span><span class="pi-label">Circle</span></button>
-          <button class="palette-item" data-snip="subgraph" title="Subgraph container"><span class="pi-glyph">⬚</span><span class="pi-label">Subgraph</span></button>
+          <button class="palette-item" draggable="true" data-snip="rect" title="Process (rectangle)"><span class="pi-glyph">▭</span><span class="pi-label">Process</span></button>
+          <button class="palette-item" draggable="true" data-snip="rounded" title="Rounded box"><span class="pi-glyph">▢</span><span class="pi-label">Rounded</span></button>
+          <button class="palette-item" draggable="true" data-snip="stadium" title="Terminal / start-end (stadium)"><span class="pi-glyph">⬭</span><span class="pi-label">Terminal</span></button>
+          <button class="palette-item" draggable="true" data-snip="decision" title="Decision (diamond)"><span class="pi-glyph">◇</span><span class="pi-label">Decision</span></button>
+          <button class="palette-item" draggable="true" data-snip="database" title="Database (cylinder)"><span class="pi-glyph">⛁</span><span class="pi-label">Database</span></button>
+          <button class="palette-item" draggable="true" data-snip="queue" title="Queue (hexagon)"><span class="pi-glyph">⬡</span><span class="pi-label">Queue</span></button>
+          <button class="palette-item" draggable="true" data-snip="circle" title="Circle"><span class="pi-glyph">◯</span><span class="pi-label">Circle</span></button>
+          <button class="palette-item" draggable="true" data-snip="subgraph" title="Subgraph container"><span class="pi-glyph">⬚</span><span class="pi-label">Subgraph</span></button>
         </div>
         <div class="palette-group">
           <div class="palette-group-title">Connectors</div>
-          <button class="palette-item" data-snip="arrow" title="Arrow edge"><span class="pi-glyph">→</span><span class="pi-label">Arrow</span></button>
-          <button class="palette-item" data-snip="labeled" title="Labeled edge"><span class="pi-glyph">⇥</span><span class="pi-label">Labeled</span></button>
-          <button class="palette-item" data-snip="dashed" title="Dashed (async) edge"><span class="pi-glyph">⇢</span><span class="pi-label">Dashed</span></button>
-          <button class="palette-item" data-snip="thick" title="Thick (hot path) edge"><span class="pi-glyph">⇒</span><span class="pi-label">Thick</span></button>
+          <button class="palette-item" draggable="true" data-snip="arrow" title="Arrow edge"><span class="pi-glyph">→</span><span class="pi-label">Arrow</span></button>
+          <button class="palette-item" draggable="true" data-snip="labeled" title="Labeled edge"><span class="pi-glyph">⇥</span><span class="pi-label">Labeled</span></button>
+          <button class="palette-item" draggable="true" data-snip="dashed" title="Dashed (async) edge"><span class="pi-glyph">⇢</span><span class="pi-label">Dashed</span></button>
+          <button class="palette-item" draggable="true" data-snip="thick" title="Thick (hot path) edge"><span class="pi-glyph">⇒</span><span class="pi-label">Thick</span></button>
         </div>
         <div class="palette-group">
           <div class="palette-group-title">Infra</div>
@@ -118,6 +119,23 @@
     <div class="gallery-foot">
       <button id="gallery-blank" class="gallery-blank">Start from a blank canvas</button>
     </div>
+  </div>
+</div>
+
+<!-- Command palette (Cmd/Ctrl+K): a searchable list of actions with
+     arrow-key navigation, focus trap, and Esc to close. -->
+<div id="cmdk" class="cmdk" hidden>
+  <div class="cmdk-backdrop"></div>
+  <div class="cmdk-panel" role="dialog" aria-modal="true" aria-label="Command palette">
+    <div class="cmdk-search">
+      <span class="cmdk-search-icon" aria-hidden="true">⌘</span>
+      <input id="cmdk-input" type="text" role="combobox" aria-expanded="true"
+        aria-controls="cmdk-list" aria-autocomplete="list" autocomplete="off"
+        spellcheck="false" placeholder="Type a command…" />
+      <kbd class="cmdk-esc">esc</kbd>
+    </div>
+    <div id="cmdk-list" class="cmdk-list" role="listbox" aria-label="Commands"></div>
+    <div class="cmdk-empty" id="cmdk-empty" hidden>No matching commands</div>
   </div>
 </div>
 

@@ -1022,7 +1022,8 @@ async function buildInfraPalette() {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "palette-icon";
-    btn.title = `Insert {icon:${key}} ${label}`;
+    btn.draggable = true;
+    btn.title = `Insert {icon:${key}} ${label} · click or drag to canvas`;
     // Unique node id per insertion so repeated clicks don't collide.
     btn.dataset.snip = `${id}${n}["{icon:${key}} ${label}"]`;
     btn.dataset.infra = key;
@@ -1047,6 +1048,124 @@ $("palette-body").addEventListener("click", (e) => {
   }
   const btn = e.target.closest("[data-snip]");
   if (btn) insertSnippet(btn.dataset.snip);
+});
+
+/* ---------------- drag palette items onto the canvas ---------------- */
+// Excalidraw/draw.io-style: drag a shape or infra icon from the palette and
+// drop it on the canvas. The corresponding source line is appended to the
+// diagram, and (for single-node drops) the new node is offset so it lands
+// right where you released the pointer.
+
+let dropCounter = 0;
+
+// Single-node shape factories: produce a node declaration with a unique id.
+const DROP_NODE = {
+  rect:     (id) => `${id}["Label"]`,
+  rounded:  (id) => `${id}("Label")`,
+  stadium:  (id) => `${id}(["Label"])`,
+  decision: (id) => `${id}{"Decision?"}`,
+  database: (id) => `${id}[("Database")]:::database`,
+  queue:    (id) => `${id}{{"Queue"}}:::queue`,
+  circle:   (id) => `${id}(("Label"))`,
+};
+// Multi-line / multi-node snippets (no single node to position).
+const DROP_RAW = {
+  subgraph: () => `subgraph cluster${++dropCounter}["Group"]\n  a --> b\nend`,
+  arrow:    () => `a --> b`,
+  labeled:  () => `a -->|label| b`,
+  dashed:   () => `a -.->|async| b`,
+  thick:    () => `a ==>|hot path| b`,
+};
+
+// Resolve a draggable palette element to the text to append plus, when it is a
+// single node, the id we can position at the drop point.
+function dropPayload(el) {
+  if (el.dataset.infra) {
+    const key = el.dataset.infra;                       // e.g. "aws:lambda"
+    const base = (key.split(":")[1] || "node").replace(/[^a-z0-9]/gi, "");
+    const label = el.querySelector(".pi-name")?.textContent?.trim() || base;
+    const name = `${base}${++dropCounter}`;
+    return { text: `${name}["{icon:${key}} ${label}"]`, name };
+  }
+  const key = el.dataset.snip;
+  if (DROP_NODE[key]) {
+    const name = `n${++dropCounter}`;
+    return { text: DROP_NODE[key](name), name };
+  }
+  if (DROP_RAW[key]) return { text: DROP_RAW[key](), name: null };
+  return null;
+}
+
+// Append a snippet to the end of the diagram, starting a flowchart if the
+// editor is empty, with consistent 2-space body indentation.
+function appendToDiagram(text) {
+  let base = editor.value;
+  if (!base.trim()) base = "flowchart LR\n";
+  else if (!base.endsWith("\n")) base += "\n";
+  const indent = "  ";
+  const body = text.split("\n").map((l) => indent + l).join("\n");
+  editor.value = base + body + "\n";
+}
+
+// Offset a freshly-added node so its centre lands at the drop point.
+function placeDroppedNodeAt(name, clientX, clientY) {
+  try {
+    const svg = preview.querySelector("svg");
+    if (!svg) return;
+    const g = svg.querySelector(`[data-node][data-name="${CSS.escape(name)}"]`);
+    if (!g) return;
+    const bb = g.getBBox();
+    const cx = bb.x + bb.width / 2;
+    const cy = bb.y + bb.height / 2;
+    const rect = viewport.getBoundingClientRect();
+    const worldX = (clientX - rect.left - view.x) / view.scale;
+    const worldY = (clientY - rect.top - view.y) / view.scale;
+    nodeOffsets.set(name, { x: worldX - cx, y: worldY - cy });
+    userTouchedView = true; // we've manually placed it; don't auto-refit
+    applyOffsets();
+  } catch { /* layout/geometry unavailable: node is still added, just unpositioned */ }
+}
+
+let activeDrag = null; // payload of the in-flight palette drag
+
+palette.addEventListener("dragstart", (e) => {
+  const el = e.target.closest?.(".palette-item[data-snip], .palette-icon[data-infra]");
+  if (!el) return;
+  activeDrag = dropPayload(el);
+  if (!activeDrag) return;
+  el.classList.add("dragging");
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = "copy";
+    // Standards-correct fallback so a drop onto another app/tab still works.
+    e.dataTransfer.setData("text/plain", activeDrag.text);
+  }
+});
+palette.addEventListener("dragend", (e) => {
+  e.target.closest?.(".dragging")?.classList.remove("dragging");
+  activeDrag = null;
+  viewport.classList.remove("drag-over");
+});
+
+viewport.addEventListener("dragover", (e) => {
+  if (!activeDrag) return;
+  e.preventDefault(); // required so the drop event fires
+  if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+  viewport.classList.add("drag-over");
+});
+viewport.addEventListener("dragleave", (e) => {
+  // Only clear when the pointer actually leaves the viewport.
+  if (e.target === viewport) viewport.classList.remove("drag-over");
+});
+viewport.addEventListener("drop", (e) => {
+  e.preventDefault();
+  viewport.classList.remove("drag-over");
+  const payload = activeDrag ?? (e.dataTransfer?.getData("text/plain")
+    ? { text: e.dataTransfer.getData("text/plain"), name: null } : null);
+  activeDrag = null;
+  if (!payload) return;
+  appendToDiagram(payload.text);
+  doRender(); // render now so the new node exists for positioning
+  if (payload.name) placeDroppedNodeAt(payload.name, e.clientX, e.clientY);
 });
 $("palette-toggle").addEventListener("click", () => {
   const collapsed = palette.classList.toggle("collapsed");

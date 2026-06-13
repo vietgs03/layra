@@ -650,6 +650,82 @@ $("templates").addEventListener("click", (e) => {
   scheduleRender();
 });
 
+/* ---------------- shape / snippet palette ---------------- */
+
+// Each snippet is inserted at the caret on its own line(s). `$` marks where
+// the caret should land after insertion (so you can type the label right
+// away); a trailing newline is added when the snippet defines a block.
+const SNIPPETS = {
+  rect:     `node["$Label"]`,
+  rounded:  `node("$Label")`,
+  stadium:  `node(["$Label"])`,
+  decision: `decision{"$Is it ready?"}`,
+  database: `db[("$Database")]:::database`,
+  queue:    `queue{{"$Queue"}}:::queue`,
+  circle:   `node(("$Label"))`,
+  subgraph: `subgraph cluster["$Group"]\n  a --> b\nend`,
+  arrow:    `a --> b$`,
+  labeled:  `a -->|$label| b`,
+  dashed:   `a -.->|$async| b`,
+  thick:    `a ==>|$hot path| b`,
+};
+
+// Insert a snippet on its own fresh line directly below the caret's line,
+// inheriting that line's indentation so it lands inside subgraphs etc.
+// Inserting at end-of-line (never mid-token) means snippets compose cleanly
+// even when clicked back-to-back. The `$` sentinel sets the caret so you can
+// type the label immediately; otherwise the caret lands after the text.
+function insertSnippet(key) {
+  const raw = SNIPPETS[key];
+  if (raw == null) return;
+  const caretMark = raw.indexOf("$");
+  const text = raw.replace("$", "");
+
+  const value = editor.value;
+  const caret = editor.selectionStart;
+  // End of the line the caret is on.
+  let lineEnd = value.indexOf("\n", caret);
+  if (lineEnd === -1) lineEnd = value.length;
+  // Indentation of the caret's line.
+  const lineStart = value.lastIndexOf("\n", caret - 1) + 1;
+  const indent = /^[ \t]*/.exec(value.slice(lineStart))?.[0] ?? "";
+
+  // For an empty editor, don't lead with a blank line.
+  const lead = value.length === 0 ? "" : "\n";
+  const body = lead + text;
+  const indented = body.replace(/\n/g, "\n" + indent);
+
+  editor.focus();
+  editor.setRangeText(indented, lineEnd, lineEnd, "end");
+
+  // Place caret at the sentinel: its offset in `body` plus indent added by
+  // every newline that precedes it.
+  if (caretMark >= 0) {
+    const before = lead.length + caretMark;
+    const newlinesBefore = (body.slice(0, before).match(/\n/g) || []).length;
+    const caretPos = lineEnd + before + newlinesBefore * indent.length;
+    editor.setSelectionRange(caretPos, caretPos);
+  }
+  scheduleRender();
+}
+
+const palette = $("palette");
+$("palette-body").addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-snip]");
+  if (btn) insertSnippet(btn.dataset.snip);
+});
+$("palette-toggle").addEventListener("click", () => {
+  const collapsed = palette.classList.toggle("collapsed");
+  $("palette-toggle").setAttribute("aria-expanded", String(!collapsed));
+  $("palette-toggle").textContent = collapsed ? "⊞" : "⊟";
+  localStorage.setItem("layra-palette-collapsed", collapsed ? "1" : "0");
+});
+if (localStorage.getItem("layra-palette-collapsed") === "1") {
+  palette.classList.add("collapsed");
+  $("palette-toggle").setAttribute("aria-expanded", "false");
+  $("palette-toggle").textContent = "⊞";
+}
+
 /* ---------------- export & share ---------------- */
 
 function download(filename, blob) {

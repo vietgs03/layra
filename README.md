@@ -10,6 +10,20 @@ Rust, compiled to WASM for the browser.
 parse → measure text → layout → route edges → render SVG
 ```
 
+## New in v0.3.0
+
+AWS-architecture-grade engine + a draw.io-class playground:
+
+- **Orthogonal A\* edge routing** by default, with port-aware attachment
+- **47 bundled cloud/infra icons** — `{icon:aws:lambda}`, `{icon:aws:s3}`,
+  `{icon:infra:kubernetes}` … grouped compute/storage/network/db/msg/security
+- **Nesting-aware clusters**, accurate text measurement (no overflow),
+  animated edges, large-diagram compaction
+- **Playground** ([try it](https://vietgs03.github.io/layra/)): minimap,
+  drag-to-canvas, command palette (`Cmd/Ctrl+K`), category icon palette,
+  diagram-type switcher, share links, export (SVG/PNG@1-4x), a11y, in-app help
+- **Agents**: MCP `validate_diagram` / `render_diagram` / `list_shapes`
+
 ## Why
 
 Mermaid renders labels into the DOM to measure them and runs its layout in

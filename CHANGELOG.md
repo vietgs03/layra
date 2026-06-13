@@ -1,5 +1,49 @@
 # Changelog
 
+## v0.3.0
+
+A major capability + polish release: AWS-architecture-grade engine and a
+draw.io-class playground, built across two parallel engineering tracks.
+
+### Engine (layout / routing / icons)
+- Orthogonal A* edge routing as the default for flowcharts — clean
+  axis-aligned segments with rounded corners that avoid node rects
+- Edge label collision avoidance: labels never sit on non-endpoint nodes
+- `&` fan-in/out groups (`a & b --> c & d`) and invisible links (`~~~`)
+- 47 bundled cloud/infra icons (`{icon:aws:*}` / `{icon:infra:*}`):
+  compute, storage, network, database, messaging, security
+- Nesting-aware subgraph/cluster layout (correct nested pills + padding)
+- Accurate upper-bound text measurement so labels never overflow nodes
+- Dotted edges + animation hints; full edge style × kind matrix
+- Barycenter cross-axis compaction for large-diagram quality
+  (width inflation 1.7x → 1.05x, zero overlap)
+- Port-aware edge attachment: edges leave/enter the side facing the
+  other endpoint
+
+### Playground (draw.io / Excalidraw class)
+- Minimap with viewport rectangle + smooth programmatic zoom
+- Drag palette shapes/infra icons onto the canvas
+- Command palette (Cmd/Ctrl+K) + global keyboard shortcuts
+- AWS/infra icon palette grouped by category with real glyphs
+- Animated edges toggle (persisted)
+- Diagram-type quick switcher ("New") with clean starters incl. AWS
+- Export dropdown (SVG, PNG 1x/2x/4x, copy-to-clipboard) + theme toggle
+- Two-column live editor: gutter, type badge, persistent split
+- Share/permalink (deflate + base64url URL hash, round-trip verified)
+- Onboarding empty-state + examples gallery
+- Robustness + a11y: error toast with offending line & click-to-jump,
+  ARIA roles, full keyboard nav, WASM loading overlay, responsive layout
+- Landing polish: header pitch, Star-on-GitHub CTA, in-app Help dialog
+
+### Agent integration (MCP / VS Code)
+- MCP `list_shapes` tool (alongside `validate_diagram`, `render_diagram`)
+- VS Code extension live-preview panel polish
+
+### Engineering
+- Every feature landed test-first; 35 test suites green, blog corpus
+  25/25 in both themes, zero clippy warnings, versions CI-synced
+- Two parallel agent tracks (engine + UI) integrated via review gates
+
 ## v0.2.0
 
 The "everything for agents and everyone else" release: one engine, five

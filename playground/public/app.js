@@ -544,6 +544,14 @@ function applyTheme() {
   }
 }
 
+// Flip the theme and re-render (icons/colours are theme-aware). Shared by the
+// header toggle, the "D" shortcut, and the command palette.
+function toggleTheme() {
+  dark = !dark;
+  applyTheme();
+  scheduleRender();
+}
+
 function reportError(message) {
   status.textContent = message;
   status.className = "status err";
@@ -1328,6 +1336,166 @@ async function shareLink() {
   setTimeout(() => (btn.textContent = old), 1200);
 }
 
+/* ---------------- command palette (Cmd/Ctrl+K) ---------------- */
+// A searchable overlay of every playground action with arrow-key navigation,
+// a focus trap, and Esc-to-close. Each command carries a title, optional
+// keyboard hint, and a run() callback. Global shortcuts (below) call the same
+// callbacks so the palette and hotkeys never drift.
+
+const centerXY = () => [viewport.clientWidth / 2, viewport.clientHeight / 2];
+
+// Clear all manual node placements and re-fit (the "Reset layout" action).
+function resetLayout() {
+  nodeOffsets = new Map();
+  userTouchedView = false;
+  applyOffsets();
+  fitToView(true);
+}
+
+const COMMANDS = [
+  { id: "fit", title: "Fit to view", hint: "0", icon: "⛶", run: () => fitToView(true) },
+  { id: "zoom-in", title: "Zoom in", hint: "+", icon: "＋", run: () => smoothZoom(...centerXY(), 1.25) },
+  { id: "zoom-out", title: "Zoom out", hint: "−", icon: "－", run: () => smoothZoom(...centerXY(), 1 / 1.25) },
+  { id: "zoom-reset", title: "Reset zoom to 100%", icon: "⌖", run: () => smoothZoom(...centerXY(), 1 / view.scale) },
+  { id: "reset-layout", title: "Reset layout", desc: "Clear dragged nodes & re-fit", icon: "↺", run: resetLayout },
+  { id: "export-svg", title: "Export SVG", icon: "🖼", run: () => exportSvg() },
+  { id: "export-png-1", title: "Export PNG · 1×", icon: "🖼", run: () => exportPng(1) },
+  { id: "export-png-2", title: "Export PNG · 2×", icon: "🖼", run: () => exportPng(2) },
+  { id: "export-png-4", title: "Export PNG · 4×", icon: "🖼", run: () => exportPng(4) },
+  { id: "copy-png", title: "Copy PNG to clipboard", icon: "📋", run: () => copyPngToClipboard(2) },
+  { id: "toggle-theme", title: "Toggle dark mode", hint: "D", icon: "🌓", run: () => toggleTheme() },
+  { id: "examples", title: "Open examples gallery", icon: "✦", run: () => openGallery() },
+  { id: "share", title: "Copy shareable link", icon: "🔗", run: () => shareLink() },
+];
+
+const cmdk = $("cmdk");
+const cmdkInput = $("cmdk-input");
+const cmdkList = $("cmdk-list");
+const cmdkEmpty = $("cmdk-empty");
+let cmdkActive = 0;          // index into the currently-visible commands
+let cmdkVisible = [];        // command objects matching the current query
+let cmdkLastFocus = null;    // element to restore focus to on close
+
+// Build the static list once; we toggle [hidden] + reorder per query.
+function buildCmdk() {
+  const frag = document.createDocumentFragment();
+  for (const cmd of COMMANDS) {
+    const row = document.createElement("div");
+    row.className = "cmdk-item";
+    row.id = `cmdk-item-${cmd.id}`;
+    row.dataset.cmd = cmd.id;
+    row.setAttribute("role", "option");
+    row.innerHTML =
+      `<span class="cmdk-ic" aria-hidden="true">${cmd.icon ?? "›"}</span>` +
+      `<span class="cmdk-text"><span class="cmdk-title">${cmd.title}</span>` +
+      (cmd.desc ? `<span class="cmdk-desc">${cmd.desc}</span>` : "") +
+      `</span>` +
+      (cmd.hint ? `<kbd class="cmdk-kbd">${cmd.hint}</kbd>` : "");
+    frag.appendChild(row);
+  }
+  cmdkList.replaceChildren(frag);
+}
+
+// Lightweight fuzzy-ish match: every query char must appear in order.
+function cmdkMatches(cmd, q) {
+  if (!q) return true;
+  const hay = (cmd.title + " " + (cmd.desc ?? "")).toLowerCase();
+  let i = 0;
+  for (const ch of q) {
+    i = hay.indexOf(ch, i);
+    if (i === -1) return false;
+    i++;
+  }
+  return true;
+}
+
+function filterCmdk() {
+  const q = cmdkInput.value.trim().toLowerCase();
+  cmdkVisible = COMMANDS.filter((c) => cmdkMatches(c, q));
+  const visibleIds = new Set(cmdkVisible.map((c) => c.id));
+  for (const cmd of COMMANDS) {
+    const row = cmdkList.querySelector(`#cmdk-item-${cmd.id}`);
+    row.hidden = !visibleIds.has(cmd.id);
+  }
+  // Reorder DOM to match filtered order so arrow nav follows the list.
+  for (const cmd of cmdkVisible) cmdkList.appendChild(cmdkList.querySelector(`#cmdk-item-${cmd.id}`));
+  cmdkEmpty.hidden = cmdkVisible.length > 0;
+  cmdkActive = 0;
+  markCmdkActive();
+}
+
+function markCmdkActive() {
+  for (const row of cmdkList.querySelectorAll(".cmdk-item")) row.classList.remove("active");
+  const cmd = cmdkVisible[cmdkActive];
+  if (!cmd) {
+    cmdkInput.removeAttribute("aria-activedescendant");
+    return;
+  }
+  const row = cmdkList.querySelector(`#cmdk-item-${cmd.id}`);
+  row.classList.add("active");
+  row.scrollIntoView({ block: "nearest" });
+  cmdkInput.setAttribute("aria-activedescendant", row.id);
+}
+
+function openCmdk() {
+  if (!cmdk.hidden) return;
+  cmdkLastFocus = document.activeElement;
+  buildCmdk();
+  cmdk.hidden = false;
+  cmdkInput.value = "";
+  filterCmdk();
+  requestAnimationFrame(() => cmdkInput.focus());
+}
+
+function closeCmdk() {
+  if (cmdk.hidden) return;
+  cmdk.hidden = true;
+  cmdkLastFocus?.focus?.();
+}
+
+function runCmdk(cmd) {
+  if (!cmd) return;
+  closeCmdk();
+  cmd.run();
+}
+
+cmdkInput.addEventListener("input", filterCmdk);
+cmdkInput.addEventListener("keydown", (e) => {
+  if (e.key === "ArrowDown") {
+    e.preventDefault();
+    cmdkActive = Math.min(cmdkActive + 1, cmdkVisible.length - 1);
+    markCmdkActive();
+  } else if (e.key === "ArrowUp") {
+    e.preventDefault();
+    cmdkActive = Math.max(cmdkActive - 1, 0);
+    markCmdkActive();
+  } else if (e.key === "Enter") {
+    e.preventDefault();
+    runCmdk(cmdkVisible[cmdkActive]);
+  } else if (e.key === "Escape") {
+    e.preventDefault();
+    closeCmdk();
+  } else if (e.key === "Tab") {
+    // Focus trap: the input is the only focusable control, so keep it here.
+    e.preventDefault();
+    cmdkActive = e.shiftKey
+      ? Math.max(cmdkActive - 1, 0)
+      : Math.min(cmdkActive + 1, cmdkVisible.length - 1);
+    markCmdkActive();
+  }
+});
+cmdkList.addEventListener("click", (e) => {
+  const row = e.target.closest(".cmdk-item");
+  if (row) runCmdk(COMMANDS.find((c) => c.id === row.dataset.cmd));
+});
+cmdkList.addEventListener("mousemove", (e) => {
+  const row = e.target.closest(".cmdk-item");
+  if (!row) return;
+  const idx = cmdkVisible.findIndex((c) => c.id === row.dataset.cmd);
+  if (idx >= 0 && idx !== cmdkActive) { cmdkActive = idx; markCmdkActive(); }
+});
+cmdk.querySelector(".cmdk-backdrop").addEventListener("click", closeCmdk);
+
 async function loadFromHash() {
   if (location.hash.length <= 1) return false;
   const src = await decodeSource(location.hash.slice(1));
@@ -1380,13 +1548,11 @@ async function main() {
     else updateMinimapView();
   });
 
-  $("btn-theme").addEventListener("click", () => {
-    dark = !dark;
-    applyTheme();
-    scheduleRender();
-  });
+  $("btn-theme").addEventListener("click", toggleTheme);
   $("btn-share").addEventListener("click", shareLink);
   setupExportMenu();
+  // Test hook: lets headless checks invoke Share without a click/clipboard.
+  window.__layraShare = shareLink;
 
   // Keyboard: Tab/Shift+Tab indent in editor, Escape blurs;
   // +/−/0 zoom when focus is outside the editor.
@@ -1408,6 +1574,16 @@ async function main() {
       editor.setRangeText("  ", s, end, "end");
     }
     scheduleRender();
+  });
+
+  // Global: Cmd/Ctrl+K toggles the command palette from anywhere (even while
+  // typing in the editor). Esc closes it. The palette's own keydown handles
+  // navigation once it's open.
+  window.addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
+      e.preventDefault();
+      cmdk.hidden ? openCmdk() : closeCmdk();
+    }
   });
 
   window.addEventListener("keydown", (e) => {

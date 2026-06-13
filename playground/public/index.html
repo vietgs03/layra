@@ -122,6 +122,23 @@
   </div>
 </div>
 
+<!-- Command palette (Cmd/Ctrl+K): a searchable list of actions with
+     arrow-key navigation, focus trap, and Esc to close. -->
+<div id="cmdk" class="cmdk" hidden>
+  <div class="cmdk-backdrop"></div>
+  <div class="cmdk-panel" role="dialog" aria-modal="true" aria-label="Command palette">
+    <div class="cmdk-search">
+      <span class="cmdk-search-icon" aria-hidden="true">⌘</span>
+      <input id="cmdk-input" type="text" role="combobox" aria-expanded="true"
+        aria-controls="cmdk-list" aria-autocomplete="list" autocomplete="off"
+        spellcheck="false" placeholder="Type a command…" />
+      <kbd class="cmdk-esc">esc</kbd>
+    </div>
+    <div id="cmdk-list" class="cmdk-list" role="listbox" aria-label="Commands"></div>
+    <div class="cmdk-empty" id="cmdk-empty" hidden>No matching commands</div>
+  </div>
+</div>
+
 <script type="module" src="./app.js"></script>
 </body>
 </html>

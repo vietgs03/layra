@@ -66,6 +66,12 @@ impl IconRegistry {
     /// icon set (`aws:database`, `aws:lambda`, `aws:s3`, ...). These ship in
     /// the binary so diagrams can use `{icon:aws:lambda}` with no external
     /// pack to fetch. Additional packs still merge on top.
+    ///
+    /// The set spans ~40 cloud/dev-infra glyphs: hand-drawn `aws:*` line marks
+    /// plus real Iconify bodies (`mdi:*` monochrome, `logos:*` brand marks) for
+    /// common services (`postgres`, `redis`, `kafka`, `docker`, `kubernetes`,
+    /// `nginx`, ...). The `aws:` and `infra:` prefixes alias the same namespace
+    /// (see [`get`](Self::get)).
     pub fn with_builtins() -> Self {
         let mut reg = Self::default();
         // The bundled pack is authored in-repo and validated by tests, so a
@@ -98,7 +104,24 @@ impl IconRegistry {
     }
 
     pub fn get(&self, key: &str) -> Option<&Icon> {
-        self.icons.get(key)
+        if let Some(icon) = self.icons.get(key) {
+            return Some(icon);
+        }
+        // `aws:` and `infra:` name the same bundled namespace, so an author can
+        // write whichever reads best (`aws:postgres` or `infra:postgres`)
+        // without having to know which prefix a given glyph was authored under.
+        self.alias_key(key).and_then(|alias| self.icons.get(&alias))
+    }
+
+    /// If `key` is in the `aws:` / `infra:` namespace, return the same name
+    /// under the sibling prefix (`aws:x` -> `infra:x` and vice versa). Other
+    /// prefixes (`mdi:`, `logos:`, user packs) have no alias.
+    fn alias_key(&self, key: &str) -> Option<String> {
+        if let Some(name) = key.strip_prefix("aws:") {
+            Some(format!("infra:{name}"))
+        } else {
+            key.strip_prefix("infra:").map(|name| format!("aws:{name}"))
+        }
     }
 
     /// Emit an inline `<svg>` fragment for `key` at the given position and
@@ -106,7 +129,7 @@ impl IconRegistry {
     ///
     /// `color` replaces `currentColor` so themed glyphs follow light/dark.
     pub fn emit_svg(&self, key: &str, x: f32, y: f32, size: f32, color: &str) -> Option<String> {
-        let icon = self.icons.get(key)?;
+        let icon = self.get(key)?;
         let instance = self.counter.get();
         self.counter.set(instance + 1);
 
@@ -202,5 +225,24 @@ mod tests {
     fn unknown_icon_is_none() {
         let reg = IconRegistry::new();
         assert!(reg.emit_svg("mdi:nope", 0.0, 0.0, 24.0, "#000").is_none());
+    }
+
+    #[test]
+    fn aws_and_infra_prefixes_alias_each_other() {
+        // `aws:x` and `infra:x` resolve to the same glyph regardless of which
+        // prefix the bundled pack authored it under.
+        let reg = IconRegistry::with_builtins();
+
+        // `s3` ships under `aws:`; `postgres` ships under `infra:`.
+        assert!(reg.get("aws:s3").is_some());
+        assert!(reg.get("infra:s3").is_some(), "infra: must alias to aws:");
+        assert!(reg.get("infra:postgres").is_some());
+        assert!(
+            reg.get("aws:postgres").is_some(),
+            "aws: must alias to infra:"
+        );
+
+        // Non aws/infra prefixes are not aliased.
+        assert!(reg.get("mdi:postgres").is_none());
     }
 }

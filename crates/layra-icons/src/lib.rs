@@ -20,6 +20,11 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use thiserror::Error;
 
+/// Bundled AWS-architecture-style infra icon pack (24x24, themeable). Shipped
+/// in the binary via `include_str!` so the curated set needs no external
+/// fetch. See `assets/infra.json`.
+pub const BUILTIN_INFRA_PACK: &str = include_str!("../assets/infra.json");
+
 #[derive(Debug, Error)]
 pub enum IconError {
     #[error("invalid icon pack JSON: {0}")]
@@ -55,6 +60,25 @@ pub struct IconRegistry {
 impl IconRegistry {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// A registry pre-loaded with the bundled AWS-architecture-style infra
+    /// icon set (`aws:database`, `aws:lambda`, `aws:s3`, ...). These ship in
+    /// the binary so diagrams can use `{icon:aws:lambda}` with no external
+    /// pack to fetch. Additional packs still merge on top.
+    pub fn with_builtins() -> Self {
+        let mut reg = Self::default();
+        // The bundled pack is authored in-repo and validated by tests, so a
+        // parse failure here is a build-time bug, not a runtime condition.
+        reg.load_pack(BUILTIN_INFRA_PACK)
+            .expect("bundled infra icon pack must parse");
+        reg
+    }
+
+    /// Merge the bundled infra icon set into this registry (idempotent).
+    pub fn load_builtins(&mut self) -> usize {
+        self.load_pack(BUILTIN_INFRA_PACK)
+            .expect("bundled infra icon pack must parse")
     }
 
     /// Merge a pack (Iconify-format JSON) into the registry.

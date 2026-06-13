@@ -23,6 +23,9 @@ pub enum NodeShape {
     /// Person / actor figure.
     Actor,
     Cloud,
+    /// Subroutine / predefined-process box: rectangle with double side
+    /// bars (Mermaid `[[...]]`, AWS "process" look).
+    Subroutine,
 }
 
 /// Semantic role of a component. Drives color taxonomy (BBG-style role

@@ -616,6 +616,9 @@ fn parse_bracket(s: &str) -> Option<(NodeShape, String)> {
     if let Some(l) = strip(s, "([", "])") {
         return Some((NodeShape::Stadium, l));
     }
+    if let Some(l) = strip(s, "[[", "]]") {
+        return Some((NodeShape::Subroutine, l));
+    }
     if let Some(l) = strip(s, "[(", ")]") {
         return Some((NodeShape::Cylinder, l));
     }
@@ -784,6 +787,14 @@ mod tests {
 
         assert_eq!(g.edges[1].label.as_deref(), Some("persist"));
         assert_eq!(g.edges[2].style, EdgeStyle::Dashed);
+    }
+
+    #[test]
+    fn parses_subroutine_shape() {
+        let g = parse("flowchart LR\n  proc[[Run Job]] --> done(Done)").unwrap();
+        let proc = g.node(g.node_by_name("proc").unwrap());
+        assert_eq!(proc.shape, NodeShape::Subroutine);
+        assert_eq!(proc.label, "Run Job");
     }
 
     #[test]

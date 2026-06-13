@@ -83,6 +83,9 @@ fn shape_factor(shape: NodeShape) -> (f32, f32) {
         NodeShape::Hexagon => (1.25, 1.0),
         NodeShape::Cylinder => (1.0, 1.45),
         NodeShape::Stadium => (1.2, 1.0),
+        // Side bars eat horizontal room; cloud blob needs slack all round.
+        NodeShape::Subroutine => (1.18, 1.0),
+        NodeShape::Cloud => (1.35, 1.4),
         _ => (1.0, 1.0),
     }
 }

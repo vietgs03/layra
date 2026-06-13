@@ -1008,9 +1008,61 @@ function insertNodeText(raw) {
   scheduleRender();
 }
 
-// Build the Infra icon grid: one button per bundled aws:* icon, each showing
-// the real inline SVG glyph. Clicking inserts a node like
-// `node["{icon:aws:lambda} Lambda"]` (caret lands ready to edit the label).
+// Infra icon categories, in display order. The build's infra-icons.json may
+// grow to ~46 icons; we read an explicit `category` field when present and
+// otherwise classify by keyword so new icons still group sensibly.
+const INFRA_CATEGORIES = [
+  { id: "compute",   title: "Compute" },
+  { id: "storage",   title: "Storage" },
+  { id: "database",  title: "Database" },
+  { id: "network",   title: "Network" },
+  { id: "messaging", title: "Messaging" },
+  { id: "security",  title: "Security" },
+  { id: "other",     title: "Other" },
+];
+
+// Keyword → category heuristic (first match wins, checked against the icon
+// name + label). Used only when the icon has no explicit `category` field.
+const INFRA_KEYWORD_CATEGORY = [
+  [/lambda|function|server|container|compute|ec2|fargate|ecs|eks|kubernet|batch|vm|instance/, "compute"],
+  [/s3|bucket|storage|disk|volume|efs|ebs|glacier|backup|archive/, "storage"],
+  [/db|database|dynamo|rds|aurora|sql|mongo|redis|cache|elasticache|memcached|table/, "database"],
+  [/cdn|cloudfront|gateway|vpc|network|route|dns|load.?balance|elb|alb|nlb|subnet|router|firewall.?net|nat|peering|transit|endpoint|ip|api/, "network"],
+  [/queue|sqs|sns|topic|kafka|kinesis|event|stream|bus|mq|notification|pubsub|message|mail|ses/, "messaging"],
+  [/security|iam|kms|secret|cert|waf|shield|guard|cognito|auth|key|vault|policy|role/, "security"],
+];
+
+function categorizeInfra(key, def) {
+  if (def.category) return String(def.category).toLowerCase();
+  const hay = `${key.split(":")[1] ?? ""} ${def.label ?? ""}`.toLowerCase();
+  for (const [re, cat] of INFRA_KEYWORD_CATEGORY) if (re.test(hay)) return cat;
+  return "other";
+}
+
+// Create one draggable palette tile for an infra icon.
+function infraTile(key, def, n) {
+  const name = key.split(":")[1];            // e.g. "lambda"
+  const id = name.replace(/[^a-z0-9]/g, ""); // node id base, e.g. "loadbalancer"
+  const label = def.label ?? name;
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "palette-icon";
+  btn.draggable = true;
+  btn.title = `Insert {icon:${key}} ${label} · click or drag to canvas`;
+  // Unique node id per insertion so repeated clicks don't collide.
+  btn.dataset.snip = `${id}${n}["{icon:${key}} ${label}"]`;
+  btn.dataset.infra = key;
+  const svg =
+    `<svg viewBox="0 0 ${def.width} ${def.height}" width="22" height="22" ` +
+    `xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${def.body}</svg>`;
+  btn.innerHTML = `<span class="pi-icon">${svg}</span><span class="pi-name">${label}</span>`;
+  return btn;
+}
+
+// Build the Infra icon palette: tiles grouped under category headers (Compute,
+// Storage, Database, Network, Messaging, Security, …). Each tile shows the real
+// inline SVG glyph; clicking inserts a node like `node["{icon:aws:lambda} Lambda"]`
+// (caret lands ready to edit the label) and tiles are draggable onto the canvas.
 async function buildInfraPalette() {
   const host = $("palette-infra");
   if (!host) return;
@@ -1021,26 +1073,27 @@ async function buildInfraPalette() {
     icons = await res.json();
   } catch { return; }
 
+  // Bucket icons by category, preserving insertion order within each.
+  const byCat = new Map();
+  for (const { id } of INFRA_CATEGORIES) byCat.set(id, []);
+  for (const [key, def] of Object.entries(icons)) {
+    const cat = categorizeInfra(key, def);
+    (byCat.get(cat) ?? byCat.get("other")).push([key, def]);
+  }
+
   const frag = document.createDocumentFragment();
   let n = 1;
-  for (const [key, def] of Object.entries(icons)) {
-    const name = key.split(":")[1];           // e.g. "lambda"
-    const id = name.replace(/[^a-z0-9]/g, ""); // node id base, e.g. "loadbalancer"
-    const label = def.label ?? name;
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "palette-icon";
-    btn.draggable = true;
-    btn.title = `Insert {icon:${key}} ${label} · click or drag to canvas`;
-    // Unique node id per insertion so repeated clicks don't collide.
-    btn.dataset.snip = `${id}${n}["{icon:${key}} ${label}"]`;
-    btn.dataset.infra = key;
-    const svg =
-      `<svg viewBox="0 0 ${def.width} ${def.height}" width="22" height="22" ` +
-      `xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${def.body}</svg>`;
-    btn.innerHTML = `<span class="pi-icon">${svg}</span><span class="pi-name">${label}</span>`;
-    frag.appendChild(btn);
-    n++;
+  for (const cat of INFRA_CATEGORIES) {
+    const entries = byCat.get(cat.id);
+    if (!entries || !entries.length) continue;
+    const head = document.createElement("div");
+    head.className = "palette-cat-title";
+    head.textContent = cat.title;
+    frag.appendChild(head);
+    const grid = document.createElement("div");
+    grid.className = "palette-icon-grid";
+    for (const [key, def] of entries) grid.appendChild(infraTile(key, def, n++));
+    frag.appendChild(grid);
   }
   host.replaceChildren(frag);
 }

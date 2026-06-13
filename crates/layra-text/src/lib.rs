@@ -38,23 +38,81 @@ impl Default for TextOptions {
     }
 }
 
-/// Average advance widths (em units, i.e. fraction of font size) for the
-/// common sans UI stack (Inter/Helvetica/Arial class). Buckets keep the
-/// table tiny while staying within a few percent of real measurements.
+/// Per-character advance widths (em units, i.e. fraction of font size) for
+/// the common sans UI stack (Inter / Helvetica / Arial class).
+///
+/// The table is a deliberate **upper bound**: values are taken from the
+/// widest mainstream member of the stack (Helvetica/Arial AFM advances,
+/// em = units/1000) and never under-shoot it. Inter is narrower, so a box
+/// sized from this table fits Inter too. Over-measuring slightly is the
+/// safe direction — a label never overflows its node — while still being
+/// within a few percent of the real advance for Latin text.
 fn char_em(c: char) -> f32 {
     match c {
-        'i' | 'j' | 'l' | '!' | '|' | '\'' | '.' | ',' | ':' | ';' => 0.28,
-        'f' | 't' | 'r' | '(' | ')' | '[' | ']' | '{' | '}' | '/' | '\\' | ' ' => 0.35,
-        'I' | '"' | '`' => 0.30,
-        'm' | 'M' | 'W' | 'w' => 0.85,
-        '@' => 0.95,
-        'A'..='Z' => 0.68,
+        ' ' => 0.30,
+        '!' => 0.30,
+        '"' => 0.36,
+        '#' => 0.56,
+        '$' => 0.56,
+        '%' => 0.90,
+        '&' => 0.68,
+        '\'' => 0.20,
+        '(' | ')' => 0.34,
+        '*' => 0.39,
+        '+' | '<' | '=' | '>' | '~' => 0.59,
+        ',' => 0.28,
+        '-' => 0.34,
+        '.' => 0.28,
+        '/' | '\\' => 0.30,
         '0'..='9' => 0.56,
-        'a'..='z' => 0.52,
-        '-' | '_' | '=' | '+' | '<' | '>' | '~' => 0.55,
-        _ if (c as u32) > 0x2E80 => 1.0, // CJK and friends: full-width
-        _ => 0.55,
+        ':' | ';' => 0.28,
+        '?' => 0.56,
+        '@' => 1.02,
+        // Capitals: real per-letter advances (the old 0.68 bucket
+        // under-measured C/G/O/Q/D/H/U/V/X/Y and especially M/W).
+        'A' | 'B' | 'E' | 'K' | 'P' | 'S' | 'V' | 'X' | 'Y' => 0.68,
+        'C' | 'D' | 'H' | 'N' | 'R' | 'U' => 0.73,
+        'F' | 'T' | 'Z' => 0.62,
+        'G' | 'O' | 'Q' => 0.78,
+        'I' => 0.30,
+        'J' => 0.50,
+        'L' => 0.56,
+        'M' => 0.84,
+        'W' => 0.95,
+        '[' | ']' => 0.30,
+        '^' => 0.47,
+        '_' => 0.56,
+        '`' => 0.34,
+        // Lowercase: per-letter advances.
+        'a' | 'b' | 'd' | 'e' | 'g' | 'h' | 'k' | 'n' | 'o' | 'p' | 'q' | 'u' | 'x' | 'y' | 'z' => {
+            0.56
+        }
+        'c' | 's' | 'v' => 0.50,
+        'f' | 't' => 0.30,
+        'i' | 'j' | 'l' => 0.24,
+        'm' => 0.84,
+        'r' => 0.34,
+        'w' => 0.73,
+        '{' | '}' => 0.34,
+        '|' => 0.27,
+        // Emoji render wider than a nominal em advance.
+        c if is_emoji(c) => 1.2,
+        // CJK / full-width ideographs and kana.
+        _ if (c as u32) >= 0x2E80 => 1.0,
+        // Other Latin-1 / accented letters: ~base letter width.
+        _ => 0.56,
     }
+}
+
+/// Rough emoji-range test (pictographs, symbols, supplementary planes) so
+/// emoji glyphs reserve their wider advance.
+fn is_emoji(c: char) -> bool {
+    let u = c as u32;
+    (0x2600..=0x27BF).contains(&u)        // misc symbols + dingbats
+        || (0x1F000..=0x1FAFF).contains(&u) // pictographs / supplemental
+        || (0x2190..=0x21FF).contains(&u)   // arrows (often emoji-presented)
+        || u == 0x200D                      // ZWJ (sequence joiner)
+        || (0x1F1E6..=0x1F1FF).contains(&u) // regional indicators (flags)
 }
 
 /// Measure a single line of text at `font_size`.

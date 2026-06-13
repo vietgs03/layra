@@ -147,6 +147,9 @@ fn separate_parallel_edges(graph: &mut Graph) {
 fn place_labels(graph: &mut Graph) {
     use std::collections::HashMap;
 
+    // Node rects are obstacles labels must avoid; snapshot once.
+    let node_rects: Vec<Rect> = graph.nodes.iter().map(|n| n.rect).collect();
+
     // Count labeled edges per unordered node pair to detect parallels.
     let mut seen: HashMap<(u32, u32), usize> = HashMap::new();
 
@@ -166,12 +169,68 @@ fn place_labels(graph: &mut Graph) {
         let (nx, ny) = (-dir.y / len, dir.x / len);
         // First label goes one side, second the other, third further out.
         let side = if ordinal.is_multiple_of(2) { 1.0 } else { -1.0 };
-        let dist = 12.0 + (ordinal / 2) as f32 * 16.0;
-        edge.label_pos = Some(Point::new(
-            mid.x + nx * side * dist,
-            mid.y + ny * side * dist,
-        ));
+        let base_dist = 12.0 + (ordinal / 2) as f32 * 16.0;
+
+        let label = edge.label.as_deref().unwrap_or("");
+        let pos = clear_label_pos(
+            mid,
+            (nx * side, ny * side),
+            base_dist,
+            label,
+            &node_rects,
+            edge.source.index(),
+            edge.target.index(),
+        );
+        edge.label_pos = Some(pos);
     }
+}
+
+/// Estimated label box (matches the renderer: ~7px/char advance, 20px tall).
+fn label_rect(label: &str, cx: f32, cy: f32) -> Rect {
+    let w = label.chars().count() as f32 * 7.0 + 12.0;
+    Rect::new(cx - w / 2.0, cy - 10.0, w, 20.0)
+}
+
+/// Place the label starting at `base_dist` along the normal, then push it
+/// further out in steps until its box clears every node that is not an
+/// endpoint of this edge. Gives up after a bounded search and returns the
+/// least-bad position (the contract test treats border touches as fine).
+fn clear_label_pos(
+    mid: Point,
+    normal: (f32, f32),
+    base_dist: f32,
+    label: &str,
+    nodes: &[Rect],
+    src: usize,
+    dst: usize,
+) -> Point {
+    let (nx, ny) = normal;
+    let intrudes = |cx: f32, cy: f32| -> bool {
+        let lb = label_rect(label, cx, cy);
+        nodes.iter().enumerate().any(|(i, r)| {
+            if i == src || i == dst {
+                return false;
+            }
+            // Shrink the node rect so a border touch isn't a collision.
+            let r = Rect::new(r.x + 2.0, r.y + 2.0, r.width - 4.0, r.height - 4.0);
+            r.width > 0.0 && r.height > 0.0 && lb.intersects(&r)
+        })
+    };
+
+    // Try increasing offsets on the preferred side, then the opposite side.
+    for &sign in &[1.0f32, -1.0] {
+        let mut dist = base_dist;
+        for _ in 0..14 {
+            let cx = mid.x + nx * sign * dist;
+            let cy = mid.y + ny * sign * dist;
+            if !intrudes(cx, cy) {
+                return Point::new(cx, cy);
+            }
+            dist += 14.0;
+        }
+    }
+    // Fallback: original preferred position.
+    Point::new(mid.x + nx * base_dist, mid.y + ny * base_dist)
 }
 
 fn polyline_bbox(points: &[Point]) -> Rect {

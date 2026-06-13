@@ -1,10 +1,13 @@
-//! Orthogonal edge routing: localized A* with bend penalties.
+//! Orthogonal edge routing: A* over a visibility grid with bend penalties.
 //!
-//! When a straight edge would cut through a node, we re-route it as an
-//! orthogonal (axis-aligned) polyline around the obstacles — the
-//! libavoid/draw.io look. The search is deliberately **local**:
+//! Orthogonal (axis-aligned) routing is the **default** for flowchart
+//! edges — the libavoid / draw.io / AWS-architecture look. Every edge is
+//! routed as clean horizontal/vertical segments that avoid node rects,
+//! with rounded corners applied by the renderer.
 //!
-//! 1. Region = bbox(source, target) inflated by a margin; only obstacles
+//! The search is deliberately **local**:
+//!
+//! 1. Region = bbox(start, goal) inflated by a margin; only obstacles
 //!    intersecting the region participate.
 //! 2. Candidate coordinates = obstacle borders (± clearance) + endpoints.
 //!    Because every obstacle boundary is in the coordinate set, two
@@ -14,9 +17,10 @@
 //!    each 90° turn costs `bend_penalty`. Heuristic = Manhattan distance
 //!    (admissible: every move is axis-aligned).
 //!
-//! Cost stays tiny on real diagrams: the grid is typically < 40×40 and
-//! only edges that actually collide pay for the search.
+//! Cost stays tiny on real diagrams: the grid is typically < 40×40 and the
+//! corridor between two ranks contains only a handful of obstacles.
 
+use layra_core::Direction;
 use layra_core::{Point, Rect};
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
@@ -24,30 +28,94 @@ use std::collections::BinaryHeap;
 const CLEARANCE: f32 = 10.0;
 const REGION_MARGIN: f32 = 80.0;
 const BEND_PENALTY: f32 = 40.0;
+/// How far the edge travels straight out of a node border before it is free
+/// to turn. Gives every connector a clean perpendicular stub at both ends.
+pub(crate) const STUB: f32 = 14.0;
+
+/// A border attachment point plus the outward unit normal at that point.
+pub(crate) type Port = (Point, (f32, f32));
+
+/// Choose source/target attachment ports based on the layout direction and
+/// the relative position of the two node rects. Vertical layouts attach to
+/// top/bottom centers; horizontal layouts to left/right centers; same-rank
+/// edges fall back to the cross axis.
+pub(crate) fn ports(src: Rect, dst: Rect, dir: Direction) -> (Port, Port) {
+    let sc = src.center();
+    let dc = dst.center();
+    let dx = dc.x - sc.x;
+    let dy = dc.y - sc.y;
+    let vertical_main = matches!(dir, Direction::TopBottom | Direction::BottomTop);
+
+    // Prefer the layout's main axis; switch to the cross axis only when the
+    // two nodes share a rank (negligible main-axis separation).
+    let use_vertical = if vertical_main {
+        dy.abs() >= 8.0 || dx.abs() < 8.0
+    } else {
+        dy.abs() >= 8.0 && dx.abs() < 8.0
+    };
+
+    if use_vertical {
+        if dy >= 0.0 {
+            (
+                (Point::new(sc.x, src.bottom()), (0.0, 1.0)),
+                (Point::new(dc.x, dst.y), (0.0, -1.0)),
+            )
+        } else {
+            (
+                (Point::new(sc.x, src.y), (0.0, -1.0)),
+                (Point::new(dc.x, dst.bottom()), (0.0, 1.0)),
+            )
+        }
+    } else if dx >= 0.0 {
+        (
+            (Point::new(src.right(), sc.y), (1.0, 0.0)),
+            (Point::new(dst.x, dc.y), (-1.0, 0.0)),
+        )
+    } else {
+        (
+            (Point::new(src.x, sc.y), (-1.0, 0.0)),
+            (Point::new(dst.right(), dc.y), (1.0, 0.0)),
+        )
+    }
+}
+
+/// Move a port point outward along its normal by `STUB` so the connector
+/// always leaves/enters a node perpendicular to its border.
+pub(crate) fn stub_point(port: Port) -> Point {
+    let ((p, (nx, ny)), s) = (port, STUB);
+    Point::new(p.x + nx * s, p.y + ny * s)
+}
 
 /// Route from `start` to `goal` around `obstacles` (rects the path must not
 /// enter). Returns an orthogonal polyline including both endpoints, or
 /// `None` when no route exists within the local region.
 pub(crate) fn route_around(start: Point, goal: Point, obstacles: &[Rect]) -> Option<Vec<Point>> {
-    // Local region: everything relevant to this edge.
-    let region = Rect::new(
-        start.x.min(goal.x),
-        start.y.min(goal.y),
-        (start.x - goal.x).abs().max(1.0),
-        (start.y - goal.y).abs().max(1.0),
-    )
-    .inflate(REGION_MARGIN);
-
+    let region = bbox(start, goal).inflate(REGION_MARGIN);
     let blocked: Vec<Rect> = obstacles
         .iter()
         .filter(|r| r.intersects(&region))
         .map(|r| r.inflate(CLEARANCE * 0.5))
         .collect();
+    astar_grid(start, goal, &blocked)
+}
 
+fn bbox(a: Point, b: Point) -> Rect {
+    Rect::new(
+        a.x.min(b.x),
+        a.y.min(b.y),
+        (a.x - b.x).abs().max(1.0),
+        (a.y - b.y).abs().max(1.0),
+    )
+}
+
+/// A* over an orthogonal visibility grid. `blocked` are the inflated
+/// obstacle rects the path may not enter; `start`/`goal` must not be
+/// strictly inside any of them.
+fn astar_grid(start: Point, goal: Point, blocked: &[Rect]) -> Option<Vec<Point>> {
     // Candidate grid lines: obstacle borders ± clearance, plus endpoints.
     let mut xs = vec![start.x, goal.x];
     let mut ys = vec![start.y, goal.y];
-    for r in &blocked {
+    for r in blocked {
         xs.push(r.x - CLEARANCE);
         xs.push(r.right() + CLEARANCE);
         ys.push(r.y - CLEARANCE);
@@ -63,7 +131,7 @@ pub(crate) fn route_around(start: Point, goal: Point, obstacles: &[Rect]) -> Opt
     let nx = xs.len();
     let ny = ys.len();
     if nx * ny > 10_000 {
-        return None; // degenerate; caller keeps the straight route
+        return None; // degenerate; caller keeps a simpler route
     }
 
     let idx_of = |v: f32, axis: &[f32]| -> usize {
@@ -170,7 +238,11 @@ pub(crate) fn route_around(start: Point, goal: Point, obstacles: &[Rect]) -> Opt
     }
     path.reverse();
 
-    // Merge collinear runs so the polyline only keeps real corners.
+    Some(simplify_collinear(path))
+}
+
+/// Merge collinear runs so the polyline only keeps real corners.
+pub(crate) fn simplify_collinear(path: Vec<Point>) -> Vec<Point> {
     let mut simplified: Vec<Point> = Vec::with_capacity(path.len());
     for p in path {
         if simplified.len() >= 2 {
@@ -183,9 +255,33 @@ pub(crate) fn route_around(start: Point, goal: Point, obstacles: &[Rect]) -> Opt
                 continue;
             }
         }
+        // Drop zero-length steps that survive port/stub assembly.
+        if let Some(&last) = simplified.last() {
+            if (last.x - p.x).abs() < 0.01 && (last.y - p.y).abs() < 0.01 {
+                continue;
+            }
+        }
         simplified.push(p);
     }
-    Some(simplified)
+    simplified
+}
+
+/// Axis-aligned fallback connector between two stub points: a single
+/// "Z" (vertical-horizontal-vertical or horizontal-vertical-horizontal)
+/// honoring the layout's main axis. Always orthogonal; used only when the
+/// A* search is skipped or fails so output stays axis-aligned regardless.
+pub(crate) fn orthogonal_connector(a: Point, b: Point, dir: Direction) -> Vec<Point> {
+    let vertical_main = matches!(dir, Direction::TopBottom | Direction::BottomTop);
+    if (a.x - b.x).abs() < 0.5 || (a.y - b.y).abs() < 0.5 {
+        return vec![a, b]; // already a straight axis-aligned segment
+    }
+    if vertical_main {
+        let mid = (a.y + b.y) / 2.0;
+        vec![a, Point::new(a.x, mid), Point::new(b.x, mid), b]
+    } else {
+        let mid = (a.x + b.x) / 2.0;
+        vec![a, Point::new(mid, a.y), Point::new(mid, b.y), b]
+    }
 }
 
 #[cfg(test)]
@@ -204,12 +300,18 @@ mod tests {
         false
     }
 
+    fn axis_aligned(path: &[Point]) -> bool {
+        path.windows(2)
+            .all(|w| (w[0].x - w[1].x).abs() < 0.5 || (w[0].y - w[1].y).abs() < 0.5)
+    }
+
     #[test]
     fn routes_around_blocking_node() {
         let blocker = Rect::new(80.0, -20.0, 60.0, 40.0);
         let path = route_around(Point::new(0.0, 0.0), Point::new(220.0, 0.0), &[blocker]).unwrap();
 
         assert!(path.len() >= 3, "must bend around the blocker: {path:?}");
+        assert!(axis_aligned(&path), "must be axis-aligned: {path:?}");
         for w in path.windows(2) {
             assert!(
                 !seg_hits_rect(w[0], w[1], &blocker),
@@ -237,5 +339,26 @@ mod tests {
         let b = Rect::new(60.0, 20.0, 40.0, 80.0);
         let path = route_around(Point::new(0.0, 0.0), Point::new(160.0, 0.0), &[a, b]).unwrap();
         assert!(path.len() <= 4, "expected few corners, got {path:?}");
+    }
+
+    #[test]
+    fn connector_is_axis_aligned() {
+        let p = orthogonal_connector(
+            Point::new(0.0, 0.0),
+            Point::new(50.0, 100.0),
+            Direction::TopBottom,
+        );
+        assert!(axis_aligned(&p), "fallback must be orthogonal: {p:?}");
+    }
+
+    #[test]
+    fn ports_pick_perpendicular_attachment() {
+        let src = Rect::new(0.0, 0.0, 40.0, 20.0);
+        let dst = Rect::new(0.0, 100.0, 40.0, 20.0);
+        let ((ps, ns), (pd, nd)) = ports(src, dst, Direction::TopBottom);
+        assert_eq!(ps, Point::new(20.0, 20.0)); // bottom-center of src
+        assert_eq!(ns, (0.0, 1.0));
+        assert_eq!(pd, Point::new(20.0, 100.0)); // top-center of dst
+        assert_eq!(nd, (0.0, -1.0));
     }
 }

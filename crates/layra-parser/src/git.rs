@@ -33,12 +33,7 @@ pub(crate) fn parse_lenient(lines: &[(usize, &str)]) -> (GitGraph, Vec<ParseErro
             continue;
         }
         if let Some(rest) = line.strip_prefix("branch ") {
-            let name = rest
-                .trim()
-                .split_whitespace()
-                .next()
-                .unwrap_or("")
-                .to_string();
+            let name = rest.split_whitespace().next().unwrap_or("").to_string();
             if name.is_empty() {
                 warnings.push(err(ln, line));
                 continue;

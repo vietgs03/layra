@@ -7,10 +7,19 @@
 <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
-<header>
+<!-- Loading overlay: shown until the WASM engine finishes initializing.
+     Removed by app.js once init() resolves. -->
+<div id="boot" class="boot" role="status" aria-live="polite" aria-label="Loading Layra">
+  <div class="boot-inner">
+    <span class="boot-logo" aria-hidden="true">◆</span>
+    <span class="boot-spinner" aria-hidden="true"></span>
+    <span class="boot-text">Starting the diagram engine…</span>
+  </div>
+</div>
+<header role="banner">
   <div class="brand">
     <span class="logo">◆</span> <strong>Layra</strong>
-    <span class="tag"><span id="perf">—</span></span>
+    <span class="tag"><span id="perf" aria-hidden="true">—</span></span>
   </div>
   <div class="switcher" id="switcher">
     <div class="menu" id="new-menu">
@@ -20,7 +29,7 @@
       <div class="menu-list new-list" id="new-list" role="menu" aria-label="New diagram type" hidden></div>
     </div>
   </div>
-  <div class="actions">
+  <div class="actions" role="toolbar" aria-label="Diagram actions">
     <button id="btn-examples" title="Browse example diagrams">Examples</button>
     <button id="btn-animate" class="icon-btn" title="Animate edges (A)" aria-label="Animate edges" aria-pressed="false">⇝</button>
     <button id="btn-theme" class="icon-btn" title="Toggle dark mode (D)" aria-label="Toggle dark mode" aria-pressed="false">🌓</button>
@@ -42,10 +51,10 @@
 </header>
 
 <main id="main">
-  <section class="pane editor-pane" id="editor-pane">
-    <aside class="palette" id="palette">
+  <section class="pane editor-pane" id="editor-pane" aria-label="Editor">
+    <aside class="palette" id="palette" aria-label="Shape and icon palette">
       <button class="palette-toggle" id="palette-toggle" title="Toggle palette" aria-label="Toggle palette" aria-expanded="true">⊟</button>
-      <div class="palette-body" id="palette-body">
+      <div class="palette-body" id="palette-body" role="group" aria-label="Insertable shapes, connectors and infra icons">
         <div class="palette-hint" id="palette-hint">Click to insert · drag onto the canvas</div>
         <div class="palette-group">
           <div class="palette-group-title">Shapes</div>
@@ -78,23 +87,25 @@
       </div>
       <div class="editor-scroll" id="editor-scroll">
         <div class="gutter" id="gutter" aria-hidden="true"></div>
-        <textarea id="editor" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
+        <textarea id="editor" spellcheck="false" autocapitalize="off" autocomplete="off"
+          aria-label="Diagram source editor" aria-describedby="status" aria-invalid="false"></textarea>
       </div>
-      <div id="status" class="status ok">ready</div>
+      <div id="status" class="status ok" role="status" aria-live="polite">ready</div>
     </div>
   </section>
-  <div id="splitter" role="separator" aria-orientation="vertical" title="Drag to resize"></div>
-  <section class="pane preview-pane" id="preview-pane">
-    <div id="viewport"><div id="preview"></div></div>
-    <div id="minimap" class="minimap" hidden title="Drag to navigate">
-      <div id="minimap-canvas"></div>
-      <div id="minimap-view"></div>
+  <div id="splitter" role="separator" aria-orientation="vertical" tabindex="0"
+    aria-label="Resize editor and preview" title="Drag to resize (←/→ to adjust)"></div>
+  <section class="pane preview-pane" id="preview-pane" aria-label="Diagram preview">
+    <div id="viewport" role="application" aria-label="Diagram canvas — drag to pan, scroll to zoom" tabindex="0"><div id="preview"></div></div>
+    <div id="minimap" class="minimap" hidden role="navigation" aria-label="Diagram minimap — drag to navigate" title="Drag to navigate">
+      <div id="minimap-canvas" aria-hidden="true"></div>
+      <div id="minimap-view" aria-hidden="true"></div>
     </div>
-    <div class="zoom-controls">
-      <button id="zoom-out" title="Zoom out (−)">−</button>
-      <span id="zoom-level">100%</span>
-      <button id="zoom-in" title="Zoom in (+)">+</button>
-      <button id="zoom-fit" title="Fit to view (0)">Fit</button>
+    <div class="zoom-controls" role="group" aria-label="Zoom controls">
+      <button id="zoom-out" title="Zoom out (−)" aria-label="Zoom out">−</button>
+      <span id="zoom-level" aria-live="polite" aria-label="Zoom level">100%</span>
+      <button id="zoom-in" title="Zoom in (+)" aria-label="Zoom in">+</button>
+      <button id="zoom-fit" title="Fit to view (0)" aria-label="Fit to view">Fit</button>
     </div>
   </section>
 </main>

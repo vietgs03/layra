@@ -28,6 +28,42 @@ body {
   color: var(--text);
 }
 
+/* ---------------- boot / loading overlay ---------------- */
+/* Covers the app until the WASM engine initializes; app.js fades it out. */
+.boot {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  transition: opacity 0.3s ease;
+}
+.boot.hide { opacity: 0; pointer-events: none; }
+.boot-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  color: var(--dim);
+  font-size: 13px;
+}
+.boot-logo { font-size: 40px; color: var(--accent); animation: boot-pulse 1.4s ease-in-out infinite; }
+.boot-spinner {
+  width: 26px;
+  height: 26px;
+  border: 2.5px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: boot-spin 0.8s linear infinite;
+}
+@keyframes boot-spin { to { transform: rotate(360deg); } }
+@keyframes boot-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) {
+  .boot-logo, .boot-spinner { animation: none; }
+}
+
 header {
   display: flex;
   align-items: center;
@@ -433,6 +469,7 @@ main { display: flex; flex: 1; min-height: 0; }
   transition: background 0.15s;
 }
 #splitter:hover, #splitter.dragging { background: var(--accent); }
+#splitter:focus-visible { background: var(--accent); outline: 2px solid var(--accent); outline-offset: -1px; }
 
 .preview-pane { flex: 1; }
 
@@ -477,6 +514,7 @@ main { display: flex; flex: 1; min-height: 0; }
   background-size: 22px 22px;
 }
 #viewport.panning { cursor: grabbing; }
+#viewport:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 /* Drop target highlight while dragging a palette item over the canvas. */
 #viewport.drag-over {
   cursor: copy;
@@ -536,10 +574,20 @@ main { display: flex; flex: 1; min-height: 0; }
 }
 
 @media (max-width: 760px) {
+  header { gap: 8px; padding: 7px 10px; }
+  .switcher { flex: 0 1 auto; }
+  .new-current { display: none; }
+  .actions { flex-wrap: wrap; gap: 5px; }
+  .actions button { font-size: 12px; padding: 5px 9px; }
   main { flex-direction: column; }
-  .editor-pane { width: 100% !important; height: 45%; }
+  /* Stack editor over preview; each gets a usable half of the viewport. */
+  .editor-pane { width: 100% !important; height: 48%; min-height: 160px; border-right: none; border-bottom: 1px solid var(--border); }
+  .preview-pane { flex: 1; min-height: 200px; }
   #splitter { display: none; }
-  .palette { display: none; }
+  /* Collapse the palette to its toggle so the editor keeps full width; users
+     can expand it on demand. */
+  .palette { position: absolute; z-index: 8; height: auto; max-height: 100%; box-shadow: 2px 0 12px rgba(0,0,0,0.18); }
+  .palette.collapsed { box-shadow: none; }
 }
 [data-node]:hover > * { filter: brightness(0.96); }
 
@@ -908,3 +956,38 @@ main { display: flex; flex: 1; min-height: 0; }
   transform: translate(-50%, 0);
   pointer-events: auto;
 }
+/* Error toast: red accent + a monospace code line. Wider, wraps long lines. */
+.toast.error {
+  border-color: color-mix(in srgb, var(--error) 55%, var(--border));
+  background: color-mix(in srgb, var(--error) 8%, var(--panel));
+  white-space: normal;
+  cursor: pointer;
+  max-width: min(620px, 94vw);
+}
+.toast .toast-title {
+  display: block;
+  font-weight: 600;
+  color: var(--error);
+  margin-bottom: 3px;
+}
+.toast .toast-code {
+  display: block;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  margin-top: 4px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.toast .toast-hint { display: block; font-size: 11px; color: var(--dim); margin-top: 5px; }
+/* Warning variant: amber accent (rendered but skipped lines, not a hard error). */
+.toast.error.is-warn {
+  border-color: color-mix(in srgb, #d97706 55%, var(--border));
+  background: color-mix(in srgb, #d97706 8%, var(--panel));
+}
+.toast.error.is-warn .toast-title { color: #b45309; }
+:root.dark .toast.error.is-warn .toast-title { color: #fbbf24; }

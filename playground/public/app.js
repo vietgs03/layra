@@ -456,11 +456,15 @@ viewport.addEventListener("pointerup", () => {
 });
 // Space bar = pan mode (grab cursor over nodes too).
 window.addEventListener("keydown", (e) => {
-  if (e.code === "Space" && document.activeElement !== editor) {
-    spaceHeld = true;
-    viewport.classList.add("pan-mode");
-    e.preventDefault();
-  }
+  // Space toggles pan-mode, but only when focus isn't on an interactive
+  // control (so Space still activates buttons/links and types in inputs).
+  if (e.code !== "Space") return;
+  const ae = document.activeElement;
+  const interactive = ae && ae.closest?.("button, a, input, textarea, select, [role=menuitem], [role=option]");
+  if (interactive) return;
+  spaceHeld = true;
+  viewport.classList.add("pan-mode");
+  e.preventDefault();
 });
 window.addEventListener("keyup", (e) => {
   if (e.code === "Space") {
@@ -514,6 +518,26 @@ splitter.addEventListener("pointerdown", (e) => {
   };
   splitter.addEventListener("pointermove", move);
   splitter.addEventListener("pointerup", up);
+});
+
+// Keyboard resize: the splitter is focusable (role=separator). Left/Right
+// nudge by 24px, Home/End jump to sensible extremes; the ratio is persisted.
+splitter.addEventListener("keydown", (e) => {
+  const cur = editorPane.getBoundingClientRect().width;
+  const step = 24;
+  let w = cur;
+  if (e.key === "ArrowLeft") w = cur - step;
+  else if (e.key === "ArrowRight") w = cur + step;
+  else if (e.key === "Home") w = 280;
+  else if (e.key === "End") w = window.innerWidth - 360;
+  else return;
+  e.preventDefault();
+  w = Math.min(Math.max(w, 240), window.innerWidth - 320);
+  editorPane.style.width = `${w}px`;
+  localStorage.setItem(SPLIT_KEY, (w / window.innerWidth).toFixed(4));
+  splitter.setAttribute("aria-valuenow", Math.round((w / window.innerWidth) * 100));
+  if (!userTouchedView) fitToView();
+  else updateMinimapView();
 });
 
 // Keep the editor width proportional to the window on resize.
@@ -580,7 +604,83 @@ function reportError(message) {
   status.textContent = message;
   status.className = "status err";
   const m = /line (\d+)/.exec(message);
-  highlightLine(m ? Number(m[1]) : null);
+  const line = m ? Number(m[1]) : null;
+  highlightLine(line);
+  editor.setAttribute("aria-invalid", "true");
+  showIssueToast(message, line, "error");
+}
+
+// Jump the editor caret to (and focus) a 1-based line, scrolling it into view.
+function jumpToLine(line) {
+  if (!Number.isFinite(line) || line < 1) return;
+  const lines = editor.value.split("\n");
+  let pos = 0;
+  for (let i = 0; i < line - 1 && i < lines.length; i++) pos += lines[i].length + 1;
+  const end = pos + (lines[line - 1]?.length ?? 0);
+  editor.focus();
+  editor.setSelectionRange(pos, end);
+  // Centre the line vertically.
+  const lh = parseFloat(getComputedStyle(editor).lineHeight) || 18;
+  editor.scrollTop = Math.max(0, (line - 1) * lh - editor.clientHeight / 2);
+  syncGutterScroll();
+  highlightLine(line);
+}
+
+// Surface a syntax error / lenient-render warning as a clickable toast that
+// shows the offending source line; clicking jumps the editor caret there.
+// Engine messages are line-numbered ("... line N ..."), parsed out for the
+// snippet. `severity` is "error" (hard parse failure) or "warn" (rendered with
+// skipped lines). De-duped by signature so it doesn't re-flash on every
+// keystroke while the same issue persists.
+let lastIssueSig = null;
+function showIssueToast(message, line, severity = "error", count = 1) {
+  const sig = `${severity}|${line}`;
+  const el = ensureToast();
+  const alreadyShowing = el.classList.contains("show") && lastIssueSig === sig;
+  lastIssueSig = sig;
+
+  el.className = `toast error ${severity === "warn" ? "is-warn" : ""}`.trim();
+  el.replaceChildren();
+  const title = document.createElement("span");
+  title.className = "toast-title";
+  const what = severity === "warn"
+    ? (count > 1 ? `${count} lines skipped` : "Line skipped")
+    : "Syntax error";
+  title.textContent = line ? `${what} · line ${line}` : what;
+  el.appendChild(title);
+  const msg = document.createElement("span");
+  msg.textContent = message;
+  el.appendChild(msg);
+  if (line) {
+    const src = editor.value.split("\n")[line - 1];
+    if (src != null) {
+      const code = document.createElement("span");
+      code.className = "toast-code";
+      code.textContent = `${line} │ ${src.trim() || "(empty line)"}`;
+      el.appendChild(code);
+    }
+    const hint = document.createElement("span");
+    hint.className = "toast-hint";
+    hint.textContent = "Click to jump to this line";
+    el.appendChild(hint);
+    el.onclick = () => { jumpToLine(line); el.classList.remove("show"); };
+  } else {
+    el.onclick = null;
+  }
+  el.classList.add("show");
+  // Errors linger; warnings auto-dismiss. Don't restart the timer if the same
+  // issue is already on screen (avoids flicker while typing).
+  clearTimeout(toastTimer);
+  if (severity === "warn") {
+    toastTimer = setTimeout(() => el.classList.remove("show"), alreadyShowing ? 4200 : 5000);
+  }
+}
+
+// Hide the issue toast (called on a clean render).
+function dismissIssueToast() {
+  lastIssueSig = null;
+  const el = $("toast");
+  if (el && el.classList.contains("error")) el.classList.remove("show");
 }
 
 function highlightLine(line) {
@@ -708,11 +808,16 @@ function doRender() {
       status.textContent = `rendered, ${warnings.length} skipped — ${warnings[0]}`;
       status.className = "status warn";
       const m = /line (\d+)/.exec(warnings[0]);
-      highlightLine(m ? Number(m[1]) : null);
+      const line = m ? Number(m[1]) : null;
+      highlightLine(line);
+      editor.setAttribute("aria-invalid", "false");
+      showIssueToast(warnings[0], line, "warn", warnings.length);
     } else {
       status.textContent = "ok";
       status.className = "status ok";
       highlightLine(null);
+      editor.setAttribute("aria-invalid", "false");
+      dismissIssueToast();
     }
   } catch (e) {
     reportError(String(e.message ?? e));
@@ -1446,7 +1551,10 @@ $("palette-toggle").addEventListener("click", () => {
   $("palette-toggle").textContent = collapsed ? "⊞" : "⊟";
   localStorage.setItem("layra-palette-collapsed", collapsed ? "1" : "0");
 });
-if (localStorage.getItem("layra-palette-collapsed") === "1") {
+// Collapse the palette if the user previously collapsed it, or by default on
+// narrow viewports (where an expanded palette would overlay the editor).
+const palettePref = localStorage.getItem("layra-palette-collapsed");
+if (palettePref === "1" || (palettePref === null && window.innerWidth <= 760)) {
   palette.classList.add("collapsed");
   $("palette-toggle").setAttribute("aria-expanded", "false");
   $("palette-toggle").textContent = "⊞";
@@ -1609,9 +1717,11 @@ async function shareLink() {
 }
 
 // A small, transient toast in the bottom-centre of the viewport. Reused for
-// share confirmation and other lightweight, non-blocking feedback.
+// share confirmation, syntax errors, and other lightweight feedback.
 let toastTimer = null;
-function showToast(message, ms = 2400) {
+
+// Lazily create (once) the shared toast element.
+function ensureToast() {
   let el = $("toast");
   if (!el) {
     el = document.createElement("div");
@@ -1621,6 +1731,13 @@ function showToast(message, ms = 2400) {
     el.setAttribute("aria-live", "polite");
     document.body.appendChild(el);
   }
+  return el;
+}
+
+function showToast(message, ms = 2400) {
+  const el = ensureToast();
+  el.onclick = null;
+  el.className = "toast";
   el.textContent = message;
   el.classList.add("show");
   clearTimeout(toastTimer);
@@ -1800,8 +1917,38 @@ async function loadFromHash() {
 
 /* ---------------- boot ---------------- */
 
+// Hide the WASM loading overlay (fade out, then remove from the DOM so it
+// never traps focus or intercepts pointer events).
+function hideBoot() {
+  const boot = $("boot");
+  if (!boot) return;
+  boot.classList.add("hide");
+  setTimeout(() => boot.remove(), 320);
+}
+
+// If the engine fails to initialize, keep the overlay but show a clear,
+// actionable error instead of leaving a silent spinner.
+function bootError(err) {
+  const boot = $("boot");
+  if (!boot) return;
+  boot.classList.remove("hide");
+  boot.innerHTML =
+    `<div class="boot-inner">` +
+    `<span class="boot-logo" aria-hidden="true">⚠</span>` +
+    `<span class="boot-text">Couldn't start the diagram engine.</span>` +
+    `<span class="boot-text" style="font-size:11px">${String(err?.message ?? err)}</span>` +
+    `<button class="empty-cta" onclick="location.reload()">Reload</button>` +
+    `</div>`;
+}
+
 async function main() {
-  await init();
+  try {
+    await init();
+  } catch (e) {
+    console.error("layra: WASM init failed", e);
+    bootError(e);
+    return;
+  }
 
   try {
     const res = await fetch("./icons-blog.json");
@@ -1821,6 +1968,8 @@ async function main() {
   setupNewMenu();
   doRender();
   fitToView();
+  // Engine is ready and the first frame is painted: drop the loading overlay.
+  hideBoot();
 
   // Onboarding: open the examples gallery on a truly fresh start (no shared
   // link, no autosaved work) or whenever the editor is empty.
@@ -1889,6 +2038,18 @@ async function main() {
     else if (e.key === "0") fitToView(true);
     else if (e.key === "d" || e.key === "D") $("btn-theme").click();
     else if (e.key === "a" || e.key === "A") $("btn-animate").click();
+    // Arrow-key panning when the canvas itself is focused (keyboard a11y).
+    else if (document.activeElement === viewport &&
+             ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+      e.preventDefault();
+      const step = e.shiftKey ? 120 : 40;
+      if (e.key === "ArrowUp") view.y += step;
+      else if (e.key === "ArrowDown") view.y -= step;
+      else if (e.key === "ArrowLeft") view.x += step;
+      else if (e.key === "ArrowRight") view.x -= step;
+      userTouchedView = true;
+      applyView();
+    }
   });
 }
 

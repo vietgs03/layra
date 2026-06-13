@@ -11,6 +11,10 @@ keeps drawing while you type through syntax errors.
 2. Run **Layra: Open Diagram Preview** (command palette or editor title icon)
 3. Edit — the preview updates on every keystroke
 
+The preview is a real canvas: scroll to zoom, drag to pan, **Fit** to
+recenter, and it re-themes automatically when you switch VS Code between
+light and dark. Switching the active editor repaints the matching preview.
+
 ## Build from source
 
 ```bash

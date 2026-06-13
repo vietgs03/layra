@@ -35,6 +35,11 @@ jobs:
       - name: Test
         run: cargo test --workspace
 
+      - name: MCP stdio integration test
+        run: |
+          cargo build --release -p layra-cli
+          python3 scripts/mcp_stdio_test.py target/release/layra
+
       - name: Build playground
         run: ./playground/build.sh
 

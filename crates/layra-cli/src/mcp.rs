@@ -10,6 +10,8 @@
 //!   inner loop: generate → validate → fix → repeat.
 //! - `render_diagram { source, path?, dark? }` → SVG written to `path`
 //!   (or returned inline when no path given).
+//! - `list_shapes {}` → the node shapes, role classes, edge styles, and
+//!   icon syntax the engine understands, so an agent knows what it can use.
 //!
 //! Implements the JSON-RPC subset MCP needs (initialize, tools/list,
 //! tools/call) by hand — the protocol surface is 3 methods; a framework
@@ -97,6 +99,15 @@ fn tools_list() -> serde_json::Value {
                     },
                     "required": ["source"]
                 }
+            },
+            {
+                "name": "list_shapes",
+                "description": "List the node shapes, role classes, and edge styles the Layra engine supports, with the exact flowchart syntax for each. Call this before authoring a flowchart so you only use shapes/icons that actually render. Takes no arguments.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {},
+                    "additionalProperties": false
+                }
             }
         ]
     })
@@ -120,6 +131,7 @@ fn tools_call(params: Option<&serde_json::Value>) -> serde_json::Value {
             let path = args.get("path").and_then(|p| p.as_str());
             render(source, dark, path)
         }
+        "list_shapes" => Ok(list_shapes()),
         other => Err(format!("unknown tool: {other}")),
     };
 
@@ -132,6 +144,53 @@ fn tools_call(params: Option<&serde_json::Value>) -> serde_json::Value {
             "isError": true
         }),
     }
+}
+
+/// The full visual vocabulary the engine understands, as a JSON document
+/// agents can read once and then author against. Kept in lockstep with the
+/// `NodeShape`/`ComponentRole`/`EdgeStyle` enums in `layra-core` and the
+/// bracket-syntax table in `layra-parser`.
+fn list_shapes() -> String {
+    let doc = serde_json::json!({
+        "node_shapes": [
+            { "shape": "rect",         "syntax": "id[\"Label\"]",      "note": "process / default rectangle" },
+            { "shape": "rounded-rect", "syntax": "id(\"Label\")",      "note": "rounded box" },
+            { "shape": "stadium",      "syntax": "id([\"Label\"])",    "note": "pill / terminal (start-end)" },
+            { "shape": "cylinder",     "syntax": "id[(\"Label\")]",    "note": "database / storage; infers the `database` role" },
+            { "shape": "circle",       "syntax": "id((\"Label\"))",    "note": "circle" },
+            { "shape": "diamond",      "syntax": "id{\"Label\"}",      "note": "decision" },
+            { "shape": "hexagon",      "syntax": "id{{\"Label\"}}",    "note": "queue / pipe; infers the `queue` role" }
+        ],
+        "role_classes": {
+            "syntax": "id[\"Label\"]:::role",
+            "note": "Semantic role drives color independent of shape.",
+            "roles": [
+                "service", "database", "cache", "queue", "gateway",
+                "client", "external", "storage", "compute", "highlight"
+            ]
+        },
+        "edge_styles": [
+            { "style": "solid",     "syntax": "a --> b",        "meaning": "request / sync flow" },
+            { "style": "dashed",    "syntax": "a -.-> b",       "meaning": "async / event" },
+            { "style": "thick",     "syntax": "a ==> b",        "meaning": "hot path" },
+            { "style": "invisible", "syntax": "a ~~~ b",        "meaning": "layout constraint, renders nothing" },
+            { "style": "labeled",   "syntax": "a -->|label| b", "meaning": "any edge can carry a |label|" }
+        ],
+        "icons": {
+            "syntax": "id[\"{icon:pack:name} Label\"]",
+            "note": "Iconify-style refs inside a label; stripped from text and drawn on the node. Example packs: mdi, logos, simple-icons.",
+            "examples": ["{icon:mdi:database}", "{icon:logos:postgresql}", "{icon:mdi:router-wireless}"]
+        },
+        "containers": {
+            "subgraph": { "syntax": "subgraph id[\"Title\"]\n  a --> b\nend", "note": "groups nodes; nesting supported" }
+        },
+        "diagram_types": [
+            "flowchart", "sequenceDiagram", "stateDiagram-v2", "classDiagram",
+            "erDiagram", "gantt", "pie", "mindmap", "timeline", "journey", "gitGraph"
+        ]
+    });
+    // Pretty-print so the agent (and humans reading transcripts) can scan it.
+    serde_json::to_string_pretty(&doc).unwrap_or_else(|_| doc.to_string())
 }
 
 fn validate(source: &str) -> Result<String, String> {

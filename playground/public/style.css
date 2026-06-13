@@ -155,6 +155,66 @@ main { display: flex; flex: 1; min-height: 0; }
   min-width: 0;
 }
 
+/* Editor top bar: section label + live diagram-type badge. */
+.editor-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+.editor-bar-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--dim);
+}
+.type-badge {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--dim);
+  font-variant: small-caps;
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
+}
+.type-badge[data-type]:not([data-type=""]) {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: color-mix(in srgb, var(--accent) 9%, var(--bg));
+}
+
+/* Scroll host pairs a synced line-number gutter with the textarea. */
+.editor-scroll {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+  background: var(--bg);
+}
+.gutter {
+  flex: none;
+  width: 44px;
+  padding: 14px 8px 14px 0;
+  text-align: right;
+  font: 13.5px/1.55 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+  color: var(--dim);
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  user-select: none;
+  overflow: hidden;
+  white-space: pre;
+  opacity: 0.7;
+}
+.gutter .gl.active { color: var(--accent); opacity: 1; font-weight: 600; }
+
 /* ---------------- shape/snippet palette ---------------- */
 .palette {
   flex: none;
@@ -291,6 +351,7 @@ main { display: flex; flex: 1; min-height: 0; }
 
 #editor {
   flex: 1;
+  min-width: 0;
   width: 100%;
   border: 0;
   resize: none;
@@ -301,6 +362,7 @@ main { display: flex; flex: 1; min-height: 0; }
   color: var(--text);
   tab-size: 2;
   white-space: pre;
+  overflow: auto;
 }
 
 .status {

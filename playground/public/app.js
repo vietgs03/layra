@@ -129,6 +129,23 @@ const preview = $("preview");
 const viewport = $("viewport");
 const status = $("status");
 const perf = $("perf");
+const gutter = $("gutter");
+const typeBadge = $("type-badge");
+
+// Human-readable labels for each detected diagram type (badge text).
+const TYPE_LABELS = {
+  flowchart: "Flowchart",
+  sequence: "Sequence",
+  state: "State",
+  class: "Class",
+  er: "ER",
+  gantt: "Gantt",
+  pie: "Pie",
+  mindmap: "Mindmap",
+  timeline: "Timeline",
+  journey: "Journey",
+  git: "Git",
+};
 
 let dark = matchMedia("(prefers-color-scheme: dark)").matches;
 let lastGoodSvg = "";
@@ -419,24 +436,50 @@ $("zoom-out").addEventListener("click", () =>
 $("zoom-fit").addEventListener("click", () => fitToView(true));
 
 /* ---------------- split pane ---------------- */
+// The editor/preview divider persists its ratio (editor width / window width)
+// in localStorage so the workspace layout survives reloads and adapts to
+// window resizes.
 
 const splitter = $("splitter");
 const editorPane = $("editor-pane");
+const SPLIT_KEY = "layra-split-ratio";
+
+function applySplitRatio(ratio) {
+  const w = Math.min(Math.max(ratio * window.innerWidth, 240), window.innerWidth - 320);
+  editorPane.style.width = `${w}px`;
+}
+
+// Restore the saved ratio (clamped). Falls back to the CSS default (44%).
+const savedRatio = parseFloat(localStorage.getItem(SPLIT_KEY));
+if (Number.isFinite(savedRatio) && savedRatio > 0.1 && savedRatio < 0.9) {
+  applySplitRatio(savedRatio);
+}
+
 splitter.addEventListener("pointerdown", (e) => {
   splitter.classList.add("dragging");
   splitter.setPointerCapture(e.pointerId);
   const move = (ev) => {
     const w = Math.min(Math.max(ev.clientX, 240), window.innerWidth - 320);
-    editorPane.style.setProperty("--editor-w", `${w}px`);
     editorPane.style.width = `${w}px`;
   };
   const up = () => {
     splitter.classList.remove("dragging");
     splitter.removeEventListener("pointermove", move);
     splitter.removeEventListener("pointerup", up);
+    // Persist as a window-relative ratio so it adapts when resized.
+    const ratio = editorPane.getBoundingClientRect().width / window.innerWidth;
+    localStorage.setItem(SPLIT_KEY, ratio.toFixed(4));
+    if (!userTouchedView) fitToView();
+    else updateMinimapView();
   };
   splitter.addEventListener("pointermove", move);
   splitter.addEventListener("pointerup", up);
+});
+
+// Keep the editor width proportional to the window on resize.
+window.addEventListener("resize", () => {
+  const r = parseFloat(localStorage.getItem(SPLIT_KEY));
+  if (Number.isFinite(r) && r > 0.1 && r < 0.9) applySplitRatio(r);
 });
 
 /* ---------------- encode / decode share links ---------------- */
@@ -495,6 +538,8 @@ function reportError(message) {
 function highlightLine(line) {
   if (line == null) {
     editor.style.backgroundImage = "";
+    activeGutterLine = null;
+    markGutterActive();
     return;
   }
   const lh = parseFloat(getComputedStyle(editor).lineHeight);
@@ -503,6 +548,47 @@ function highlightLine(line) {
   editor.style.backgroundImage =
     `linear-gradient(to bottom, transparent ${y}px, rgba(220,38,38,.12) ${y}px, ` +
     `rgba(220,38,38,.12) ${y + lh}px, transparent ${y + lh}px)`;
+  activeGutterLine = line;
+  markGutterActive();
+}
+
+/* ---------------- line-number gutter ---------------- */
+// A lightweight gutter rendered alongside the textarea. Line count is kept in
+// sync on every render; scroll position is mirrored via transform; the active
+// (error/warning) line is highlighted.
+
+let gutterCount = 0;
+let activeGutterLine = null;
+
+function updateGutter() {
+  const lines = editor.value.split("\n").length;
+  if (lines !== gutterCount) {
+    gutterCount = lines;
+    let html = "";
+    for (let i = 1; i <= lines; i++) html += `<div class="gl" data-ln="${i}">${i}</div>`;
+    gutter.innerHTML = html;
+    markGutterActive();
+  }
+}
+
+function markGutterActive() {
+  const prev = gutter.querySelector(".gl.active");
+  if (prev) prev.classList.remove("active");
+  if (activeGutterLine != null) {
+    gutter.querySelector(`.gl[data-ln="${activeGutterLine}"]`)?.classList.add("active");
+  }
+}
+
+// Mirror the textarea's vertical scroll onto the gutter (translate, no reflow).
+function syncGutterScroll() {
+  gutter.scrollTop = editor.scrollTop;
+}
+
+// Update the live diagram-type badge from the detected type.
+function updateTypeBadge(type) {
+  const label = type ? TYPE_LABELS[type] ?? type : "—";
+  typeBadge.textContent = label;
+  typeBadge.dataset.type = type ?? "";
 }
 
 let lastType = null;
@@ -514,6 +600,8 @@ function doRender() {
     lastType = type;
     nodeOffsets = new Map();
   }
+  updateGutter();
+  updateTypeBadge(type);
   localStorage.setItem(AUTOSAVE_KEY, src);
   markActiveTemplate(src);
   const t0 = performance.now();
@@ -978,6 +1066,7 @@ async function main() {
 
   editor.addEventListener("input", scheduleRender);
   editor.addEventListener("scroll", () => {
+    syncGutterScroll();
     if (status.classList.contains("err") || status.classList.contains("warn")) {
       const m = /line (\d+)/.exec(status.textContent);
       highlightLine(m ? Number(m[1]) : null);

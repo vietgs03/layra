@@ -11,7 +11,9 @@ use wasm_bindgen::prelude::*;
 
 fn registry() -> &'static Mutex<layra_icons::IconRegistry> {
     static REG: OnceLock<Mutex<layra_icons::IconRegistry>> = OnceLock::new();
-    REG.get_or_init(|| Mutex::new(layra_icons::IconRegistry::new()))
+    // Pre-load the bundled AWS-architecture-style infra set so diagrams can
+    // use `{icon:aws:lambda}` with no external pack. User packs merge on top.
+    REG.get_or_init(|| Mutex::new(layra_icons::IconRegistry::with_builtins()))
 }
 
 /// Full pipeline: diagram source in, SVG string out. Dispatches on diagram

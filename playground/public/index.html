@@ -26,6 +26,7 @@
     <button data-tpl="git">Git</button>
   </div>
   <div class="actions">
+    <button id="btn-examples" title="Browse example diagrams">Examples</button>
     <button id="btn-theme" class="icon-btn" title="Toggle dark mode (D)" aria-label="Toggle dark mode" aria-pressed="false">🌓</button>
     <button id="btn-share" title="Copy shareable link">Share</button>
     <div class="menu" id="export-menu">
@@ -100,6 +101,25 @@
     </div>
   </section>
 </main>
+
+<!-- Examples gallery: starter diagrams (one per type + AWS architecture).
+     Shown on first load / empty editor, or via the Examples button. -->
+<div id="gallery" class="gallery" hidden>
+  <div class="gallery-backdrop"></div>
+  <div class="gallery-panel" role="dialog" aria-modal="true" aria-labelledby="gallery-title">
+    <div class="gallery-head">
+      <div>
+        <h2 id="gallery-title">Start with an example</h2>
+        <p class="gallery-sub">Pick a starting point — every diagram is fully editable.</p>
+      </div>
+      <button id="gallery-close" class="gallery-close" aria-label="Close gallery" title="Close (Esc)">✕</button>
+    </div>
+    <div class="gallery-grid" id="gallery-grid"></div>
+    <div class="gallery-foot">
+      <button id="gallery-blank" class="gallery-blank">Start from a blank canvas</button>
+    </div>
+  </div>
+</div>
 
 <script type="module" src="./app.js"></script>
 </body>

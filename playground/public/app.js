@@ -119,6 +119,22 @@ const TEMPLATES = {
   merge develop tag: "v1.0"
   commit
 `,
+  aws: `flowchart LR
+  cdn["{icon:aws:cdn} CloudFront"]:::client
+  gw["{icon:aws:gateway} API Gateway"]
+  fn["{icon:aws:lambda} Lambda"]:::highlight
+  cache[("{icon:aws:cache} ElastiCache")]:::database
+  db[("{icon:aws:database} DynamoDB")]:::database
+  bucket["{icon:aws:s3} S3 Bucket"]
+  q{{"{icon:aws:queue} SQS Queue"}}:::queue
+
+  cdn -->|HTTPS| gw
+  gw -->|invoke| fn
+  fn -->|read/write| db
+  fn -.->|cache| cache
+  fn -->|store| bucket
+  fn ==>|enqueue| q
+`,
 };
 
 const AUTOSAVE_KEY = "layra-playground-source";
@@ -591,6 +607,33 @@ function updateTypeBadge(type) {
   typeBadge.dataset.type = type ?? "";
 }
 
+// A tasteful onboarding placeholder shown in the preview when the editor is
+// empty. Anchored to the viewport (not #preview, which sizes to its content)
+// so it stays centred. Invites the user to open the gallery or start typing.
+function showEmptyState() {
+  preview.replaceChildren();
+  let el = $("empty-state");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "empty-state";
+    el.className = "empty-state";
+    el.innerHTML =
+      `<div class="empty-glyph">◆</div>` +
+      `<h2>Diagrams at the speed of thought</h2>` +
+      `<p>Start typing in the editor, or load a ready-made example.</p>` +
+      `<button type="button" class="empty-cta" id="empty-cta">Browse examples</button>` +
+      `<p class="empty-hint">Tip: drag shapes &amp; infra icons from the left palette.</p>`;
+    viewport.appendChild(el);
+    $("empty-cta").addEventListener("click", openGallery);
+  }
+  el.hidden = false;
+}
+
+// Remove the onboarding placeholder once real content renders.
+function hideEmptyState() {
+  $("empty-state")?.remove();
+}
+
 let lastType = null;
 function doRender() {
   rafPending = false;
@@ -604,12 +647,26 @@ function doRender() {
   updateTypeBadge(type);
   localStorage.setItem(AUTOSAVE_KEY, src);
   markActiveTemplate(src);
+
+  // Empty editor: show a tasteful onboarding placeholder instead of an error.
+  if (!src.trim()) {
+    showEmptyState();
+    perf.textContent = "—";
+    status.textContent = "empty — pick an example or start typing";
+    status.className = "status ok";
+    highlightLine(null);
+    lastGoodSvg = "";
+    minimap.hidden = true;
+    return;
+  }
+
   const t0 = performance.now();
   try {
     const { svg, warnings } = JSON.parse(render_lenient(src, dark));
     const dt = performance.now() - t0;
     perf.textContent = dt < 1 ? `${(dt * 1000).toFixed(0)} µs` : `${dt.toFixed(1)} ms`;
     lastGoodSvg = svg;
+    hideEmptyState();
     swapSvg(svg);
     applyOffsets();
     if (!userTouchedView) fitToView();
@@ -736,6 +793,125 @@ $("templates").addEventListener("click", (e) => {
   nodeOffsets = new Map();
   userTouchedView = false;
   scheduleRender();
+});
+
+/* ---------------- examples gallery / onboarding ---------------- */
+// A tasteful gallery of starter diagrams (one per diagram type plus an AWS
+// architecture example built from the bundled infra icons). Shown on first
+// load / when the editor is empty, or any time via the Examples button.
+// Each card renders a live SVG thumbnail through the wasm renderer.
+
+const GALLERY_SEEN_KEY = "layra-gallery-seen";
+
+// Display order + titles/descriptions for the gallery cards.
+const EXAMPLES = [
+  { key: "aws", title: "AWS architecture", desc: "Serverless stack with infra icons" },
+  { key: "flowchart", title: "Flowchart", desc: "Boxes, arrows & decisions" },
+  { key: "sequence", title: "Sequence", desc: "Actors exchanging messages" },
+  { key: "state", title: "State machine", desc: "States & transitions" },
+  { key: "class", title: "Class diagram", desc: "Types & relationships" },
+  { key: "er", title: "Entity-relationship", desc: "Tables & cardinality" },
+  { key: "gantt", title: "Gantt chart", desc: "Tasks on a timeline" },
+  { key: "pie", title: "Pie chart", desc: "Proportional shares" },
+  { key: "mindmap", title: "Mindmap", desc: "Radial idea tree" },
+  { key: "timeline", title: "Timeline", desc: "Events by period" },
+  { key: "journey", title: "User journey", desc: "Steps with sentiment" },
+  { key: "git", title: "Git graph", desc: "Branches, commits & merges" },
+];
+
+const gallery = $("gallery");
+const galleryGrid = $("gallery-grid");
+let galleryBuilt = false;
+
+// Render a compact thumbnail SVG (sized to fit the card) for an example.
+function thumbSvg(src) {
+  try {
+    const { svg } = JSON.parse(render_lenient(src, dark));
+    const doc = svgParser.parseFromString(svg, "image/svg+xml");
+    if (doc.querySelector("parsererror")) return null;
+    const el = doc.documentElement;
+    // Let CSS size it; preserve aspect via the existing viewBox.
+    el.removeAttribute("width");
+    el.removeAttribute("height");
+    el.setAttribute("preserveAspectRatio", "xMidYMid meet");
+    return el;
+  } catch {
+    return null;
+  }
+}
+
+function buildGallery() {
+  if (galleryBuilt) return;
+  galleryBuilt = true;
+  const frag = document.createDocumentFragment();
+  for (const ex of EXAMPLES) {
+    const src = TEMPLATES[ex.key];
+    if (!src) continue;
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "gallery-card";
+    card.dataset.example = ex.key;
+    if (ex.key === "aws") card.classList.add("featured");
+
+    const thumb = document.createElement("div");
+    thumb.className = "gallery-thumb";
+    const svg = thumbSvg(src);
+    if (svg) thumb.appendChild(svg);
+
+    const meta = document.createElement("div");
+    meta.className = "gallery-meta";
+    meta.innerHTML =
+      `<span class="gallery-card-title">${ex.title}</span>` +
+      `<span class="gallery-card-desc">${ex.desc}</span>`;
+
+    card.append(thumb, meta);
+    frag.appendChild(card);
+  }
+  galleryGrid.replaceChildren(frag);
+}
+
+function openGallery() {
+  buildGallery();
+  gallery.hidden = false;
+  // Focus the close button for keyboard users.
+  requestAnimationFrame(() => $("gallery-close").focus());
+}
+
+function closeGallery() {
+  gallery.hidden = true;
+  localStorage.setItem(GALLERY_SEEN_KEY, "1");
+}
+
+function loadExample(key) {
+  const src = TEMPLATES[key];
+  if (!src) return;
+  editor.value = src;
+  nodeOffsets = new Map();
+  userTouchedView = false;
+  closeGallery();
+  scheduleRender();
+  fitToView();
+}
+
+galleryGrid.addEventListener("click", (e) => {
+  const card = e.target.closest("[data-example]");
+  if (card) loadExample(card.dataset.example);
+});
+$("btn-examples").addEventListener("click", openGallery);
+$("gallery-close").addEventListener("click", closeGallery);
+$("gallery").querySelector(".gallery-backdrop").addEventListener("click", closeGallery);
+$("gallery-blank").addEventListener("click", () => {
+  editor.value = "";
+  nodeOffsets = new Map();
+  closeGallery();
+  editor.focus();
+  scheduleRender();
+});
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !gallery.hidden) {
+    e.preventDefault();
+    closeGallery();
+  }
 });
 
 /* ---------------- shape / snippet palette ---------------- */
@@ -1056,13 +1232,20 @@ async function main() {
   }
 
   const fromHash = await loadFromHash();
+  const saved = localStorage.getItem(AUTOSAVE_KEY);
   if (!fromHash) {
-    editor.value = localStorage.getItem(AUTOSAVE_KEY) ?? TEMPLATES.flowchart;
+    editor.value = saved ?? "";
   }
   applyTheme();
   buildInfraPalette();
   doRender();
   fitToView();
+
+  // Onboarding: open the examples gallery on a truly fresh start (no shared
+  // link, no autosaved work) or whenever the editor is empty.
+  if (!fromHash && (!saved || !saved.trim())) {
+    openGallery();
+  }
 
   editor.addEventListener("input", scheduleRender);
   editor.addEventListener("scroll", () => {

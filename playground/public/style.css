@@ -812,3 +812,31 @@ main { display: flex; flex: 1; min-height: 0; }
 .cmdk-item.active .cmdk-kbd { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); color: var(--text); }
 .cmdk-empty { padding: 24px; text-align: center; color: var(--dim); font-size: 13px; }
 .cmdk-empty[hidden] { display: none; }
+
+/* ---------------- toast (transient feedback, e.g. Share) ---------------- */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translate(-50%, 16px);
+  z-index: 300;
+  max-width: min(560px, 92vw);
+  padding: 10px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 13px;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.24);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  pointer-events: auto;
+}

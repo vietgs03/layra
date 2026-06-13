@@ -1378,15 +1378,41 @@ async function shareLink() {
   const url = `${location.origin}${location.pathname}#${hash}`;
   history.replaceState(null, "", `#${hash}`);
   const btn = $("btn-share");
-  const old = btn.textContent;
+  const old = btn.dataset.label ?? btn.textContent;
+  btn.dataset.label = old;
   try {
     await navigator.clipboard.writeText(url);
     btn.textContent = "Copied!";
+    showToast("Shareable link copied to clipboard");
   } catch {
-    prompt("Copy this link:", url);
+    // Clipboard unavailable (e.g. insecure context): surface the link in a
+    // non-blocking toast the user can select and copy manually.
     btn.textContent = "Link ready";
+    showToast(`Copy this link: ${url}`, 6000);
   }
-  setTimeout(() => (btn.textContent = old), 1200);
+  setTimeout(() => {
+    btn.textContent = btn.dataset.label ?? old;
+    delete btn.dataset.label;
+  }, 1400);
+}
+
+// A small, transient toast in the bottom-centre of the viewport. Reused for
+// share confirmation and other lightweight, non-blocking feedback.
+let toastTimer = null;
+function showToast(message, ms = 2400) {
+  let el = $("toast");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "toast";
+    el.className = "toast";
+    el.setAttribute("role", "status");
+    el.setAttribute("aria-live", "polite");
+    document.body.appendChild(el);
+  }
+  el.textContent = message;
+  el.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("show"), ms);
 }
 
 /* ---------------- command palette (Cmd/Ctrl+K) ---------------- */

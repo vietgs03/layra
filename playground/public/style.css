@@ -298,6 +298,18 @@ main { display: flex; flex: 1; min-height: 0; }
 .pi-label { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* Infra icon grid: clickable tiles, each showing the real inline SVG glyph. */
+.palette-infra { display: flex; flex-direction: column; }
+/* Sub-category header inside the Infra group (Compute, Storage, …). */
+.palette-cat-title {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--dim);
+  opacity: 0.85;
+  padding: 8px 2px 5px;
+}
+.palette-cat-title:first-child { padding-top: 2px; }
 .palette-icon-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);

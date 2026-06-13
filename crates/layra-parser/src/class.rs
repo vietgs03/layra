@@ -168,6 +168,7 @@ impl ClassParser {
             points: vec![],
             label_pos: None,
             end_labels,
+            animated: false,
         });
         Some(())
     }

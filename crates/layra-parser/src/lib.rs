@@ -286,6 +286,7 @@ impl<'a> Parser<'a> {
                             points: vec![],
                             label_pos: None,
                             end_labels: None,
+                            animated: op.animated,
                         });
                     }
                 }
@@ -394,6 +395,37 @@ struct EdgeOp {
     style: EdgeStyle,
     kind: EdgeKind,
     label: Option<String>,
+    /// `{animate}` directive seen in the label: flowing-dash hint.
+    animated: bool,
+}
+
+/// Pull a leading `{animate}` directive out of an edge label (mirrors the
+/// `{icon:...}` convention). Returns the cleaned label and whether the hint
+/// was present. The directive may appear anywhere in the label text.
+fn extract_animate(label: Option<String>) -> (Option<String>, bool) {
+    let Some(text) = label else {
+        return (None, false);
+    };
+    if let Some(start) = text.find("{animate}") {
+        let mut cleaned = String::with_capacity(text.len());
+        cleaned.push_str(text[..start].trim_end());
+        let after = text[start + "{animate}".len()..].trim_start();
+        if !cleaned.is_empty() && !after.is_empty() {
+            cleaned.push(' ');
+        }
+        cleaned.push_str(after);
+        let cleaned = cleaned.trim().to_string();
+        (
+            if cleaned.is_empty() {
+                None
+            } else {
+                Some(cleaned)
+            },
+            true,
+        )
+    } else {
+        (Some(text), false)
+    }
 }
 
 /// Split a chain segment on `&` outside any bracket/quote nesting:
@@ -477,11 +509,17 @@ fn parse_edge_op(s: &str) -> Option<(EdgeOp, &str)> {
                 style: EdgeStyle::Invisible,
                 kind: EdgeKind::Open,
                 label: None,
+                animated: false,
             },
             rest,
         ));
     }
-    let (style, after) = if let Some(rest) = s.strip_prefix("-.") {
+    let (style, after) = if let Some(rest) = s.strip_prefix("-..") {
+        // `-..->` is the dotted operator (two dots), distinct from the
+        // single-dot dashed `-.->`. Strip the closing `-` before the arrow.
+        let rest = rest.strip_prefix('-')?;
+        (EdgeStyle::Dotted, rest)
+    } else if let Some(rest) = s.strip_prefix("-.") {
         // -.-> or -.text.->  (we only support -.->)
         let rest = rest.strip_prefix('-')?;
         (EdgeStyle::Dashed, rest)
@@ -498,6 +536,8 @@ fn parse_edge_op(s: &str) -> Option<(EdgeOp, &str)> {
         if let Some(end) = after.find("-->") {
             let label = after[..end].trim();
             let tail = &after[end + 3..];
+            let raw = (!label.is_empty()).then(|| clean_edge_label(label));
+            let (label, animated) = extract_animate(raw);
             return Some((
                 EdgeOp {
                     style,
@@ -506,7 +546,8 @@ fn parse_edge_op(s: &str) -> Option<(EdgeOp, &str)> {
                     } else {
                         EdgeKind::Arrow
                     },
-                    label: (!label.is_empty()).then(|| clean_edge_label(label)),
+                    label,
+                    animated,
                 },
                 tail,
             ));
@@ -538,7 +579,16 @@ fn parse_edge_op(s: &str) -> Option<(EdgeOp, &str)> {
         (None, after)
     };
 
-    Some((EdgeOp { style, kind, label }, tail))
+    let (label, animated) = extract_animate(label);
+    Some((
+        EdgeOp {
+            style,
+            kind,
+            label,
+            animated,
+        },
+        tail,
+    ))
 }
 
 struct NodeDecl {
@@ -760,6 +810,32 @@ fn extract_icon(label: String) -> (String, Option<String>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_dotted_and_animate_directive() {
+        let g = parse(
+            r#"flowchart LR
+              a --> b
+              a -..-> c
+              a ==> d
+              b -->|{animate} sync| c
+              c -.->|{animate}| d
+            "#,
+        )
+        .unwrap();
+        // edges[0] solid, edges[1] dotted, edges[2] thick
+        assert_eq!(g.edges[0].style, EdgeStyle::Solid);
+        assert!(!g.edges[0].animated);
+        assert_eq!(g.edges[1].style, EdgeStyle::Dotted);
+        assert_eq!(g.edges[2].style, EdgeStyle::Thick);
+        // animated edge keeps cleaned label
+        assert!(g.edges[3].animated);
+        assert_eq!(g.edges[3].label.as_deref(), Some("sync"));
+        // animate on a dashed edge with no extra text → label cleared
+        assert!(g.edges[4].animated);
+        assert_eq!(g.edges[4].style, EdgeStyle::Dashed);
+        assert_eq!(g.edges[4].label, None);
+    }
 
     #[test]
     fn parses_basic_flowchart() {

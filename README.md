@@ -70,7 +70,7 @@ flowchart LR
 ```
 
 - Shapes: `[rect]` `(rounded)` `([stadium])` `[(cylinder)]` `((circle))` `{diamond}` `{{hexagon}}`
-- Edges: `-->` solid, `-.->` dashed (async/events), `==>` thick (hot path), `<-->` bidirectional, with `|label|` or `-- label -->`
+- Edges: `-->` solid, `-.->` dashed (async/events), `-..->` dotted, `==>` thick (hot path), `<-->` bidirectional, `~~~` invisible (layout-only), with `|label|` or `-- label -->`. Add `{animate}` to any edge label for a flowing-dash effect: `a -->|{animate} sync| b`.
 - Roles via `:::service`, `:::database`, `:::cache`, ... — each role gets a consistent border color. Cylinder ⇒ `database` and hexagon ⇒ `queue` are inferred.
 - Icons: `{icon:logos:postgresql}` inside a label (rendering WIP)
 

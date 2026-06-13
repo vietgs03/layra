@@ -22,6 +22,7 @@ fn edge(a: NodeId, b: NodeId) -> Edge {
         points: vec![],
         label_pos: None,
         end_labels: None,
+        animated: false,
     }
 }
 

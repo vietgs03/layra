@@ -132,6 +132,7 @@ impl ErParser {
             points: vec![],
             label_pos: None,
             end_labels: Some((lcard, rcard)),
+            animated: false,
         });
         Some(())
     }

@@ -197,6 +197,14 @@ fn write_edge(svg: &mut String, edge: &layra_core::Edge, theme: &Theme) {
         EdgeStyle::Dotted => (1.6, r#" stroke-dasharray="2 4""#),
         EdgeStyle::Invisible => unreachable!("filtered above"),
     };
+    // Animation forces a dash pattern (so a solid/thick line still has marks
+    // to flow) and adds an `<animate>` that scrolls `stroke-dashoffset`. The
+    // dash sum (12 for "8 4") matches the offset travel so the loop seamless.
+    let dash = if edge.animated && dash.is_empty() {
+        r#" stroke-dasharray="8 4""#
+    } else {
+        dash
+    };
     let markers = match edge.kind {
         EdgeKind::Arrow => r#" marker-end="url(#arrow)""#.to_string(),
         EdgeKind::Bidirectional => {
@@ -207,11 +215,21 @@ fn write_edge(svg: &mut String, edge: &layra_core::Edge, theme: &Theme) {
         EdgeKind::DiamondFilled => r#" marker-start="url(#diamond-filled)""#.to_string(),
         EdgeKind::DiamondOpen => r#" marker-start="url(#diamond-open)""#.to_string(),
     };
-    let _ = write!(
-        svg,
-        r#"<path d="{d}" fill="none" stroke="{}" stroke-width="{width}"{dash}{markers}/>"#,
-        theme.edge
-    );
+    if edge.animated {
+        // Dashed path with a looping dashoffset animation. `from`/`to` differ
+        // by the dash period (12 = 8 + 4) so the cycle is seamless.
+        let _ = write!(
+            svg,
+            r#"<path d="{d}" fill="none" stroke="{}" stroke-width="{width}"{dash}{markers}><animate attributeName="stroke-dashoffset" from="12" to="0" dur="0.6s" repeatCount="indefinite"/></path>"#,
+            theme.edge
+        );
+    } else {
+        let _ = write!(
+            svg,
+            r#"<path d="{d}" fill="none" stroke="{}" stroke-width="{width}"{dash}{markers}/>"#,
+            theme.edge
+        );
+    }
 
     // Endpoint labels (ER cardinality / UML multiplicities): small text
     // offset a fixed distance along the first/last segment.

@@ -79,6 +79,11 @@ pub struct Edge {
     /// `o{`). Rendered near the endpoints, not the middle.
     #[serde(default)]
     pub end_labels: Option<(String, String)>,
+    /// Animation hint: when true the renderer draws a flowing dash along the
+    /// path (an `<animate>` on `stroke-dashoffset`) to suggest active flow.
+    /// Purely cosmetic; never affects layout or routing.
+    #[serde(default)]
+    pub animated: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -200,6 +205,7 @@ mod tests {
             points: vec![],
             label_pos: None,
             end_labels: None,
+            animated: false,
         });
         assert_eq!(g.node_by_name("b"), Some(b));
         assert_eq!(g.edges.len(), 1);

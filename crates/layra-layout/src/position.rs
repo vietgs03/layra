@@ -140,13 +140,38 @@ pub(crate) fn apply(graph: &mut Graph, lg: &LayoutGraph, options: &LayoutOptions
             .collect();
     }
 
-    // Subgraph bounds = union of member rects + padding.
+    // Subgraph bounds = union of member rects + padding. Computed
+    // nesting-aware and children-first: a parent cluster's rect encloses
+    // both its direct member nodes *and* every child cluster's (already
+    // inflated) rect, so nested pills stack with padding instead of the
+    // inner cluster spilling out of the outer one.
     let node_rects: Vec<Rect> = graph.nodes.iter().map(|n| n.rect).collect();
-    for sg in &mut graph.subgraphs {
-        let mut iter = sg.nodes.iter().map(|id| node_rects[id.index()]);
-        if let Some(first) = iter.next() {
-            let bounds = iter.fold(first, |acc, r| acc.union(&r));
-            sg.rect = bounds.inflate(options.cluster_padding);
+    let levels = crate::cluster_levels(graph);
+    // Deepest clusters first so a parent sees its children's final rects.
+    let mut order: Vec<usize> = (0..graph.subgraphs.len()).collect();
+    order.sort_by(|&a, &b| levels[b].cmp(&levels[a]));
+
+    for si in order {
+        // Start from this cluster's direct member nodes.
+        let mut acc: Option<Rect> = graph.subgraphs[si]
+            .nodes
+            .iter()
+            .map(|id| node_rects[id.index()])
+            .reduce(|a, b| a.union(&b));
+        // Fold in any child clusters' already-computed rects.
+        for cj in 0..graph.subgraphs.len() {
+            if graph.subgraphs[cj].parent == Some(layra_core::SubgraphId(si as u32)) {
+                let child = graph.subgraphs[cj].rect;
+                if child.width > 0.0 || child.height > 0.0 {
+                    acc = Some(match acc {
+                        Some(r) => r.union(&child),
+                        None => child,
+                    });
+                }
+            }
+        }
+        if let Some(bounds) = acc {
+            graph.subgraphs[si].rect = bounds.inflate(options.cluster_padding);
         }
     }
 }

@@ -21,6 +21,31 @@ mod position;
 
 use layra_core::Graph;
 
+/// Number of enclosing clusters per subgraph, counting itself: a top-level
+/// cluster is 1, a cluster nested one level deep is 2, etc. Used to reserve
+/// depth-proportional padding (so nested pills stack without overlap) and to
+/// order cluster-rect computation children-before-parents.
+pub(crate) fn cluster_levels(graph: &Graph) -> Vec<usize> {
+    graph
+        .subgraphs
+        .iter()
+        .enumerate()
+        .map(|(i, _)| {
+            let mut depth = 1usize;
+            let mut parent = graph.subgraphs[i].parent;
+            // Bounded by subgraph count: parent chains can't cycle.
+            while let Some(pid) = parent {
+                depth += 1;
+                parent = graph.subgraphs[pid.index()].parent;
+                if depth > graph.subgraphs.len() {
+                    break; // defensive: malformed parent chain
+                }
+            }
+            depth
+        })
+        .collect()
+}
+
 /// Tunable layout parameters. Defaults match an editorial diagram look.
 #[derive(Debug, Clone, Copy)]
 pub struct LayoutOptions {

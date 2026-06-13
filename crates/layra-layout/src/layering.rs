@@ -57,14 +57,21 @@ pub(crate) fn build(graph: &Graph, options: &crate::LayoutOptions) -> LayoutGrap
     // Cluster members get their size inflated by the cluster padding so the
     // post-hoc subgraph rect (drawn around true node sizes) never overlaps
     // neighboring non-member nodes — the cheap version of dagre's border
-    // nodes.
+    // nodes. For *nested* clusters each enclosing level adds another ring of
+    // padding, so the reservation scales with nesting depth: a node two
+    // clusters deep reserves room for both pills.
     let horizontal = matches!(graph.direction, Direction::LeftRight | Direction::RightLeft);
     let pad2 = options.cluster_padding * 2.0;
+    let levels = crate::cluster_levels(graph);
     let sizes = graph
         .nodes
         .iter()
         .map(|nd| {
-            let pad = if nd.parent.is_some() { pad2 } else { 0.0 };
+            let depth = nd
+                .parent
+                .map(|p| levels.get(p.index()).copied().unwrap_or(1))
+                .unwrap_or(0);
+            let pad = depth as f32 * pad2;
             let (w, h) = (nd.size.width + pad, nd.size.height + pad);
             if horizontal {
                 (h, w)

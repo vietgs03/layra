@@ -1,11 +1,21 @@
 //! # layra-router
 //!
-//! Edge routing in two tiers:
-//! 1. **Fast path** — clip endpoints to node borders, pass layout
-//!    waypoints through. Most edges in a layered layout are already clear.
-//! 2. **Collision repair** — edges whose polyline cuts through a node are
-//!    re-routed orthogonally around the obstacles with a localized A*
-//!    (bend-penalized, libavoid-style). Only colliding edges pay.
+//! Orthogonal-by-default edge routing for flowcharts — the draw.io /
+//! libavoid / AWS-architecture look. Every multi-rank edge is routed as
+//! clean axis-aligned segments:
+//!
+//! 1. **Ports + stubs** — pick a perpendicular attachment on each node
+//!    border (top/bottom for vertical layouts, left/right for horizontal),
+//!    then leave/enter the node with a short straight stub.
+//! 2. **A\* over a visibility grid** — connect the two stubs with an
+//!    orthogonal polyline that avoids every non-endpoint node, preferring
+//!    few bends (libavoid-style bend penalty). The grid is built from
+//!    obstacle borders so it is small and the search is local.
+//! 3. **Fallback** — if A\* is skipped (degenerate grid) or finds nothing,
+//!    emit a Z-connector so output is *always* axis-aligned.
+//!
+//! Self-loops draw a lasso; invisible links constrain layout but route
+//! nothing. Rounded corners are applied by the renderer.
 
 mod grid;
 mod orthogonal;
@@ -14,21 +24,18 @@ use layra_core::{Graph, Point, Rect};
 
 pub fn route(graph: &mut Graph) {
     let rects: Vec<Rect> = graph.nodes.iter().map(|n| n.rect).collect();
+    let dir = graph.direction;
     // Spatial index: collision candidates per region instead of all nodes.
     let index = grid::SpatialGrid::build(&rects);
     let mut candidates: Vec<usize> = Vec::new();
-    // Global repair budget: quality routing for every edge on real
-    // diagrams (collisions are rare), graceful degradation on synthetic
-    // stress graphs where thousands of edges collide at once.
-    let mut repair_budget: u32 = 600;
+    // Global A* budget: full-quality routing for every edge on real
+    // diagrams, graceful degradation (Z-connector fallback) on synthetic
+    // stress graphs where thousands of edges would each spin up a grid.
+    let mut astar_budget: u32 = 1200;
 
     for edge in &mut graph.edges {
         let src = rects[edge.source.index()];
         let dst = rects[edge.target.index()];
-
-        if edge.points.len() < 2 {
-            edge.points = vec![src.center(), dst.center()];
-        }
 
         // Self loop: draw a small lasso on the node's right side.
         if edge.source == edge.target {
@@ -44,47 +51,43 @@ pub fn route(graph: &mut Graph) {
             continue;
         }
 
-        // Clip first segment at the source border, last at the target border.
-        let n = edge.points.len();
-        let first_inner = edge.points[1];
-        let last_inner = edge.points[n - 2];
-        edge.points[0] = clip_to_rect(src, src.center(), first_inner);
-        edge.points[n - 1] = clip_to_rect(dst, dst.center(), last_inner);
+        // Perpendicular border ports + outward stubs at each end.
+        let (src_port, dst_port) = orthogonal::ports(src, dst, dir);
+        let (p0, _) = src_port;
+        let (p1, _) = dst_port;
+        let s0 = orthogonal::stub_point(src_port);
+        let s1 = orthogonal::stub_point(dst_port);
 
-        // Collision repair: if any segment passes through a node that is
-        // neither endpoint, re-route orthogonally around the obstacles.
-        // The grid keeps this O(local) instead of O(all nodes) per edge.
-        let bbox = polyline_bbox(&edge.points).inflate(4.0);
-        index.query(&bbox, &mut candidates);
-        let collides = edge.points.windows(2).any(|w| {
-            candidates.iter().any(|&i| {
-                i != edge.source.index()
-                    && i != edge.target.index()
-                    && segment_intersects_rect(w[0], w[1], &rects[i].inflate(2.0))
-            })
-        });
-
-        if collides && repair_budget > 0 {
-            repair_budget -= 1;
-            let region = bbox.inflate(120.0);
-            index.query(&region, &mut candidates);
-            // Budget guard: in very dense neighborhoods the A* grid grows
-            // quadratically with obstacle count and the visual win shrinks
-            // (everything is packed anyway). Repair only sane regions.
-            const MAX_OBSTACLES: usize = 48;
-            if candidates.len() <= MAX_OBSTACLES {
-                let obstacles: Vec<Rect> = candidates
-                    .iter()
-                    .filter(|&&i| i != edge.source.index() && i != edge.target.index())
-                    .map(|&i| rects[i])
-                    .collect();
-                let start = edge.points[0];
-                let goal = edge.points[edge.points.len() - 1];
-                if let Some(path) = orthogonal::route_around(start, goal, &obstacles) {
-                    edge.points = path;
-                }
+        // Gather local obstacles (every node except the two endpoints).
+        let region = polyline_bbox(&[p0, s0, s1, p1]).inflate(120.0);
+        index.query(&region, &mut candidates);
+        const MAX_OBSTACLES: usize = 64;
+        let mut routed: Option<Vec<Point>> = None;
+        if astar_budget > 0 && candidates.len() <= MAX_OBSTACLES {
+            astar_budget -= 1;
+            let obstacles: Vec<Rect> = candidates
+                .iter()
+                .filter(|&&i| i != edge.source.index() && i != edge.target.index())
+                .map(|&i| rects[i])
+                .collect();
+            if let Some(mut path) = orthogonal::route_around(s0, s1, &obstacles) {
+                // Re-attach the border ports as true endpoints; the A* path
+                // already starts/ends at the stubs.
+                let mut full = Vec::with_capacity(path.len() + 2);
+                full.push(p0);
+                full.append(&mut path);
+                full.push(p1);
+                routed = Some(orthogonal::simplify_collinear(full));
             }
         }
+
+        edge.points = routed.unwrap_or_else(|| {
+            // Always-orthogonal fallback through the two stubs.
+            let mut path = vec![p0];
+            path.extend(orthogonal::orthogonal_connector(s0, s1, dir));
+            path.push(p1);
+            orthogonal::simplify_collinear(path)
+        });
 
         // Label placement happens in a second pass (needs all routed paths).
     }
@@ -247,70 +250,6 @@ fn polyline_bbox(points: &[Point]) -> Rect {
     Rect::new(min_x, min_y, max_x - min_x, max_y - min_y)
 }
 
-/// Conservative segment-vs-rect test via Liang-Barsky clipping.
-fn segment_intersects_rect(a: Point, b: Point, r: &Rect) -> bool {
-    let (mut t0, mut t1) = (0.0f32, 1.0f32);
-    let dx = b.x - a.x;
-    let dy = b.y - a.y;
-    let checks = [
-        (-dx, a.x - r.x),
-        (dx, r.right() - a.x),
-        (-dy, a.y - r.y),
-        (dy, r.bottom() - a.y),
-    ];
-    for (p, q) in checks {
-        if p.abs() < f32::EPSILON {
-            if q < 0.0 {
-                return false;
-            }
-            continue;
-        }
-        let t = q / p;
-        if p < 0.0 {
-            if t > t1 {
-                return false;
-            }
-            if t > t0 {
-                t0 = t;
-            }
-        } else {
-            if t < t0 {
-                return false;
-            }
-            if t < t1 {
-                t1 = t;
-            }
-        }
-    }
-    t0 < t1
-}
-
-/// Intersect the ray `from -> to` (with `from` inside `rect`) against the
-/// rect border. Falls back to `from` for degenerate rays.
-fn clip_to_rect(rect: Rect, from: Point, to: Point) -> Point {
-    let dx = to.x - from.x;
-    let dy = to.y - from.y;
-    if dx.abs() < f32::EPSILON && dy.abs() < f32::EPSILON {
-        return from;
-    }
-
-    let mut t = f32::MAX;
-    if dx > 0.0 {
-        t = t.min((rect.right() - from.x) / dx);
-    } else if dx < 0.0 {
-        t = t.min((rect.x - from.x) / dx);
-    }
-    if dy > 0.0 {
-        t = t.min((rect.bottom() - from.y) / dy);
-    } else if dy < 0.0 {
-        t = t.min((rect.y - from.y) / dy);
-    }
-    if !t.is_finite() || t == f32::MAX {
-        return from;
-    }
-    Point::new(from.x + dx * t, from.y + dy * t)
-}
-
 /// Midpoint of the polyline by arc length, plus the direction vector of
 /// the segment containing it (for perpendicular label offsets).
 fn polyline_midpoint_dir(points: &[Point]) -> (Point, Point) {
@@ -340,14 +279,6 @@ fn polyline_midpoint_dir(points: &[Point]) -> (Point, Point) {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn clips_to_border() {
-        let rect = Rect::new(0.0, 0.0, 100.0, 50.0);
-        let p = clip_to_rect(rect, rect.center(), Point::new(200.0, 25.0));
-        assert!((p.x - 100.0).abs() < 0.01);
-        assert!((p.y - 25.0).abs() < 0.01);
-    }
 
     #[test]
     fn midpoint_of_straight_line() {

@@ -9,3 +9,8 @@ packages/core/*.tgz
 packages/vscode/media/
 packages/vscode/*.vsix
 .roadmap-internal.md
+
+# Playwright / dev helper scripts must never be committed (kept in /tmp)
+/*.mjs
+/test-*.mjs
+shot.mjs

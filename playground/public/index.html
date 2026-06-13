@@ -12,18 +12,13 @@
     <span class="logo">◆</span> <strong>Layra</strong>
     <span class="tag"><span id="perf">—</span></span>
   </div>
-  <div class="templates" id="templates">
-    <button data-tpl="flowchart">Flowchart</button>
-    <button data-tpl="sequence">Sequence</button>
-    <button data-tpl="state">State</button>
-    <button data-tpl="class">Class</button>
-    <button data-tpl="er">ER</button>
-    <button data-tpl="gantt">Gantt</button>
-    <button data-tpl="pie">Pie</button>
-    <button data-tpl="mindmap">Mindmap</button>
-    <button data-tpl="timeline">Timeline</button>
-    <button data-tpl="journey">Journey</button>
-    <button data-tpl="git">Git</button>
+  <div class="switcher" id="switcher">
+    <div class="menu" id="new-menu">
+      <button id="btn-new" class="menu-trigger" aria-haspopup="true" aria-expanded="false" title="Start a new diagram of any type">
+        <span class="new-plus" aria-hidden="true">＋</span> New<span class="new-current"></span> <span class="caret">▾</span>
+      </button>
+      <div class="menu-list new-list" id="new-list" role="menu" aria-label="New diagram type" hidden></div>
+    </div>
   </div>
   <div class="actions">
     <button id="btn-examples" title="Browse example diagrams">Examples</button>

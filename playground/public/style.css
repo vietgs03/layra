@@ -75,8 +75,41 @@ header {
 }
 .brand { display: flex; align-items: center; gap: 8px; font-size: 15px; flex: none; }
 .logo { color: var(--accent); }
+.brand-pitch {
+  font-size: 12px;
+  color: var(--dim);
+  padding-left: 8px;
+  margin-left: 2px;
+  border-left: 1px solid var(--border);
+  white-space: nowrap;
+}
 .tag { color: var(--dim); font-size: 12px; }
 #perf { font-variant-numeric: tabular-nums; }
+
+/* "Star on GitHub" call-to-action: subtle until hover. */
+.star-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: border-color 0.12s, background 0.12s, transform 0.06s;
+}
+.star-link:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, var(--panel)); }
+.star-link:active { transform: translateY(1px); }
+.star-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.star-ic { color: #f5a623; font-size: 14px; line-height: 1; }
+@media (max-width: 980px) {
+  .brand-pitch { display: none; }
+  .star-link .star-text { display: none; }
+}
 
 .templates {
   display: flex;
@@ -991,3 +1024,103 @@ main { display: flex; flex: 1; min-height: 0; }
 }
 .toast.error.is-warn .toast-title { color: #b45309; }
 :root.dark .toast.error.is-warn .toast-title { color: #fbbf24; }
+
+/* ---------------- help dialog (? button / command palette) ---------------- */
+.help {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+}
+.help[hidden] { display: none; }
+.help-backdrop {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+  backdrop-filter: blur(3px);
+}
+.help-panel {
+  position: relative;
+  width: min(760px, 96vw);
+  max-height: 88vh;
+  overflow-y: auto;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 24px 70px rgba(0,0,0,0.36);
+  padding: 22px 24px 24px;
+  animation: help-in 0.16s ease;
+}
+@keyframes help-in { from { opacity: 0; transform: translateY(8px); } }
+.help-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.help-head h2 { margin: 0 0 3px; font-size: 18px; }
+.help-sub { margin: 0; font-size: 12.5px; color: var(--dim); }
+.help-close {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--dim);
+  font-size: 14px;
+  cursor: pointer;
+}
+.help-close:hover { color: var(--text); border-color: var(--accent); }
+.help-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.help-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 26px;
+  margin-top: 18px;
+}
+.help-col h3 {
+  margin: 0 0 10px;
+  font-size: 11px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.help-keys { display: grid; grid-template-columns: auto 1fr; gap: 7px 14px; margin: 0; }
+.help-keys dt { white-space: nowrap; }
+.help-keys dd { margin: 0; font-size: 13px; color: var(--text); }
+.help-keys kbd, .help-list kbd {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: var(--panel);
+  color: var(--text);
+}
+.help-code {
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text);
+  overflow-x: auto;
+  white-space: pre;
+}
+.help-list { margin: 0; padding-left: 18px; font-size: 12.5px; line-height: 1.7; color: var(--text); }
+.help-list code {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  padding: 1px 5px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.help-foot { margin: 12px 0 0; font-size: 12.5px; color: var(--dim); }
+@media (max-width: 680px) {
+  .help-body { grid-template-columns: 1fr; gap: 20px; }
+  .help-panel { padding: 18px; }
+}

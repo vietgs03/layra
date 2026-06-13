@@ -26,21 +26,61 @@
     <button data-tpl="git">Git</button>
   </div>
   <div class="actions">
-    <button id="btn-theme" title="Toggle dark mode (D)">🌓</button>
+    <button id="btn-theme" class="icon-btn" title="Toggle dark mode (D)" aria-label="Toggle dark mode" aria-pressed="false">🌓</button>
     <button id="btn-share" title="Copy shareable link">Share</button>
-    <button id="btn-svg" title="Download SVG">SVG</button>
-    <button id="btn-png" title="Download PNG">PNG</button>
+    <div class="menu" id="export-menu">
+      <button id="btn-export" class="menu-trigger" aria-haspopup="true" aria-expanded="false" title="Export diagram">
+        Export <span class="caret">▾</span>
+      </button>
+      <div class="menu-list" id="export-list" role="menu" hidden>
+        <button role="menuitem" data-export="svg">SVG</button>
+        <button role="menuitem" data-export="png-1">PNG · 1×</button>
+        <button role="menuitem" data-export="png-2">PNG · 2×</button>
+        <button role="menuitem" data-export="png-4">PNG · 4×</button>
+        <div class="menu-sep"></div>
+        <button role="menuitem" data-export="copy-png">Copy PNG to clipboard</button>
+      </div>
+    </div>
   </div>
 </header>
 
 <main id="main">
   <section class="pane editor-pane" id="editor-pane">
-    <textarea id="editor" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
-    <div id="status" class="status ok">ready</div>
+    <aside class="palette" id="palette">
+      <button class="palette-toggle" id="palette-toggle" title="Toggle palette" aria-label="Toggle palette" aria-expanded="true">⊟</button>
+      <div class="palette-body" id="palette-body">
+        <div class="palette-group">
+          <div class="palette-group-title">Shapes</div>
+          <button class="palette-item" data-snip="rect" title="Process (rectangle)"><span class="pi-glyph">▭</span><span class="pi-label">Process</span></button>
+          <button class="palette-item" data-snip="rounded" title="Rounded box"><span class="pi-glyph">▢</span><span class="pi-label">Rounded</span></button>
+          <button class="palette-item" data-snip="stadium" title="Terminal / start-end (stadium)"><span class="pi-glyph">⬭</span><span class="pi-label">Terminal</span></button>
+          <button class="palette-item" data-snip="decision" title="Decision (diamond)"><span class="pi-glyph">◇</span><span class="pi-label">Decision</span></button>
+          <button class="palette-item" data-snip="database" title="Database (cylinder)"><span class="pi-glyph">⛁</span><span class="pi-label">Database</span></button>
+          <button class="palette-item" data-snip="queue" title="Queue (hexagon)"><span class="pi-glyph">⬡</span><span class="pi-label">Queue</span></button>
+          <button class="palette-item" data-snip="circle" title="Circle"><span class="pi-glyph">◯</span><span class="pi-label">Circle</span></button>
+          <button class="palette-item" data-snip="subgraph" title="Subgraph container"><span class="pi-glyph">⬚</span><span class="pi-label">Subgraph</span></button>
+        </div>
+        <div class="palette-group">
+          <div class="palette-group-title">Connectors</div>
+          <button class="palette-item" data-snip="arrow" title="Arrow edge"><span class="pi-glyph">→</span><span class="pi-label">Arrow</span></button>
+          <button class="palette-item" data-snip="labeled" title="Labeled edge"><span class="pi-glyph">⇥</span><span class="pi-label">Labeled</span></button>
+          <button class="palette-item" data-snip="dashed" title="Dashed (async) edge"><span class="pi-glyph">⇢</span><span class="pi-label">Dashed</span></button>
+          <button class="palette-item" data-snip="thick" title="Thick (hot path) edge"><span class="pi-glyph">⇒</span><span class="pi-label">Thick</span></button>
+        </div>
+      </div>
+    </aside>
+    <div class="editor-col">
+      <textarea id="editor" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
+      <div id="status" class="status ok">ready</div>
+    </div>
   </section>
   <div id="splitter" role="separator" aria-orientation="vertical" title="Drag to resize"></div>
   <section class="pane preview-pane" id="preview-pane">
     <div id="viewport"><div id="preview"></div></div>
+    <div id="minimap" class="minimap" hidden title="Drag to navigate">
+      <div id="minimap-canvas"></div>
+      <div id="minimap-view"></div>
+    </div>
     <div class="zoom-controls">
       <button id="zoom-out" title="Zoom out (−)">−</button>
       <span id="zoom-level">100%</span>

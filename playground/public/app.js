@@ -142,6 +142,7 @@ let userTouchedView = false; // stop auto-fit once the user pans/zooms
 function applyView() {
   preview.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.scale})`;
   $("zoom-level").textContent = `${Math.round(view.scale * 100)}%`;
+  updateMinimapView();
 }
 
 function zoomAt(cx, cy, factor) {
@@ -154,7 +155,17 @@ function zoomAt(cx, cy, factor) {
   applyView();
 }
 
-function fitToView() {
+// Animated zoom for buttons/keyboard: a brief CSS transition on the
+// transform. Never used for wheel/pan (those must track input 1:1).
+let zoomTransitionTimer = null;
+function smoothZoom(cx, cy, factor) {
+  preview.classList.add("zooming");
+  zoomAt(cx, cy, factor);
+  clearTimeout(zoomTransitionTimer);
+  zoomTransitionTimer = setTimeout(() => preview.classList.remove("zooming"), 220);
+}
+
+function fitToView(animate = false) {
   const svgEl = preview.querySelector("svg");
   if (!svgEl) return;
   const vw = viewport.clientWidth;
@@ -163,12 +174,134 @@ function fitToView() {
   const h = svgEl.viewBox.baseVal.height || svgEl.clientHeight;
   if (!w || !h) return;
   const scale = Math.min((vw - 64) / w, (vh - 64) / h, 2);
+  if (animate) {
+    preview.classList.add("zooming");
+    clearTimeout(zoomTransitionTimer);
+    zoomTransitionTimer = setTimeout(() => preview.classList.remove("zooming"), 220);
+  }
   view.scale = Math.max(0.1, scale);
   view.x = (vw - w * view.scale) / 2;
   view.y = (vh - h * view.scale) / 2;
   userTouchedView = false;
   applyView();
 }
+
+/* ---------------- minimap ---------------- */
+// A theme-aware bird's-eye view in the bottom-left of the preview pane.
+// Shows the whole diagram with a viewport rectangle; click/drag jumps the
+// main view. Rebuilds its thumbnail on render, tracks the rect on pan/zoom.
+
+const minimap = $("minimap");
+const minimapCanvas = $("minimap-canvas");
+const minimapView = $("minimap-view");
+let minimapGeom = null; // { ms, mox, moy, W, H } cached for view-rect math
+
+function updateMinimapContent() {
+  const svgEl = preview.querySelector("svg");
+  if (!svgEl) {
+    minimap.hidden = true;
+    minimapGeom = null;
+    return;
+  }
+  const W = svgEl.viewBox.baseVal.width || svgEl.clientWidth;
+  const H = svgEl.viewBox.baseVal.height || svgEl.clientHeight;
+  if (!W || !H) {
+    minimap.hidden = true;
+    minimapGeom = null;
+    return;
+  }
+  // Unhide before measuring: while display:none the element has 0 size.
+  minimap.hidden = false;
+  const pad = 8;
+  const mw = minimap.clientWidth - pad * 2;
+  const mh = minimap.clientHeight - pad * 2;
+  const ms = Math.min(mw / W, mh / H);
+  const mox = pad + (mw - W * ms) / 2;
+  const moy = pad + (mh - H * ms) / 2;
+  minimapGeom = { ms, mox, moy, W, H };
+
+  // Clone the rendered SVG; namespace its ids so its marker/gradient refs
+  // never collide with the live preview's defs.
+  const clone = svgEl.cloneNode(true);
+  const idMap = new Map();
+  for (const el of clone.querySelectorAll("[id]")) {
+    const fresh = `mm-${el.id}`;
+    idMap.set(el.id, fresh);
+    el.id = fresh;
+  }
+  const refAttrs = ["href", "xlink:href", "fill", "stroke", "marker-start", "marker-end", "marker-mid", "mask", "clip-path", "filter"];
+  for (const el of clone.querySelectorAll("*")) {
+    for (const attr of refAttrs) {
+      const v = el.getAttribute(attr);
+      if (!v) continue;
+      const m = /^url\(#(.+?)\)$|^#(.+)$/.exec(v.trim());
+      if (m) {
+        const old = m[1] ?? m[2];
+        if (idMap.has(old)) {
+          el.setAttribute(attr, v.startsWith("url(") ? `url(#${idMap.get(old)})` : `#${idMap.get(old)}`);
+        }
+      }
+    }
+  }
+  clone.removeAttribute("style");
+  clone.setAttribute("width", `${W * ms}`);
+  clone.setAttribute("height", `${H * ms}`);
+  clone.style.left = `${mox}px`;
+  clone.style.top = `${moy}px`;
+  minimapCanvas.replaceChildren(clone);
+  minimap.hidden = false;
+  updateMinimapView();
+}
+
+function updateMinimapView() {
+  if (!minimapGeom || minimap.hidden) return;
+  const { ms, mox, moy, W, H } = minimapGeom;
+  const vw = viewport.clientWidth;
+  const vh = viewport.clientHeight;
+  // World (SVG-unit) region currently visible in the main viewport.
+  const worldLeft = -view.x / view.scale;
+  const worldTop = -view.y / view.scale;
+  const worldW = vw / view.scale;
+  const worldH = vh / view.scale;
+  // Clamp to the diagram bounds so the rect stays meaningful.
+  const l = Math.max(0, worldLeft);
+  const t = Math.max(0, worldTop);
+  const r = Math.min(W, worldLeft + worldW);
+  const b = Math.min(H, worldTop + worldH);
+  minimapView.style.left = `${mox + l * ms}px`;
+  minimapView.style.top = `${moy + t * ms}px`;
+  minimapView.style.width = `${Math.max(2, (r - l) * ms)}px`;
+  minimapView.style.height = `${Math.max(2, (b - t) * ms)}px`;
+}
+
+// Click/drag on the minimap recenters the main view on that diagram point.
+function minimapJump(e) {
+  if (!minimapGeom) return;
+  const { ms, mox, moy } = minimapGeom;
+  const rect = minimap.getBoundingClientRect();
+  const sx = (e.clientX - rect.left - mox) / ms; // diagram x
+  const sy = (e.clientY - rect.top - moy) / ms;  // diagram y
+  // Center the main viewport on (sx, sy).
+  view.x = viewport.clientWidth / 2 - sx * view.scale;
+  view.y = viewport.clientHeight / 2 - sy * view.scale;
+  userTouchedView = true;
+  applyView();
+}
+
+minimap.addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  minimap.classList.add("dragging");
+  minimap.setPointerCapture(e.pointerId);
+  minimapJump(e);
+});
+minimap.addEventListener("pointermove", (e) => {
+  if (minimap.hasPointerCapture(e.pointerId)) minimapJump(e);
+});
+minimap.addEventListener("pointerup", (e) => {
+  minimap.classList.remove("dragging");
+  if (minimap.hasPointerCapture(e.pointerId)) minimap.releasePointerCapture(e.pointerId);
+});
 
 viewport.addEventListener("wheel", (e) => {
   e.preventDefault();
@@ -280,10 +413,10 @@ window.addEventListener("keyup", (e) => {
 });
 
 $("zoom-in").addEventListener("click", () =>
-  zoomAt(viewport.clientWidth / 2, viewport.clientHeight / 2, 1.25));
+  smoothZoom(viewport.clientWidth / 2, viewport.clientHeight / 2, 1.25));
 $("zoom-out").addEventListener("click", () =>
-  zoomAt(viewport.clientWidth / 2, viewport.clientHeight / 2, 1 / 1.25));
-$("zoom-fit").addEventListener("click", fitToView);
+  smoothZoom(viewport.clientWidth / 2, viewport.clientHeight / 2, 1 / 1.25));
+$("zoom-fit").addEventListener("click", () => fitToView(true));
 
 /* ---------------- split pane ---------------- */
 
@@ -345,6 +478,11 @@ async function decodeSource(hash) {
 
 function applyTheme() {
   document.documentElement.classList.toggle("dark", dark);
+  const btn = $("btn-theme");
+  if (btn) {
+    btn.setAttribute("aria-pressed", String(dark));
+    btn.title = dark ? "Switch to light mode (D)" : "Switch to dark mode (D)";
+  }
 }
 
 function reportError(message) {
@@ -387,6 +525,7 @@ function doRender() {
     swapSvg(svg);
     applyOffsets();
     if (!userTouchedView) fitToView();
+    updateMinimapContent();
     resolveMissingIcons(src);
     if (warnings.length) {
       status.textContent = `rendered, ${warnings.length} skipped — ${warnings[0]}`;
@@ -511,6 +650,82 @@ $("templates").addEventListener("click", (e) => {
   scheduleRender();
 });
 
+/* ---------------- shape / snippet palette ---------------- */
+
+// Each snippet is inserted at the caret on its own line(s). `$` marks where
+// the caret should land after insertion (so you can type the label right
+// away); a trailing newline is added when the snippet defines a block.
+const SNIPPETS = {
+  rect:     `node["$Label"]`,
+  rounded:  `node("$Label")`,
+  stadium:  `node(["$Label"])`,
+  decision: `decision{"$Is it ready?"}`,
+  database: `db[("$Database")]:::database`,
+  queue:    `queue{{"$Queue"}}:::queue`,
+  circle:   `node(("$Label"))`,
+  subgraph: `subgraph cluster["$Group"]\n  a --> b\nend`,
+  arrow:    `a --> b$`,
+  labeled:  `a -->|$label| b`,
+  dashed:   `a -.->|$async| b`,
+  thick:    `a ==>|$hot path| b`,
+};
+
+// Insert a snippet on its own fresh line directly below the caret's line,
+// inheriting that line's indentation so it lands inside subgraphs etc.
+// Inserting at end-of-line (never mid-token) means snippets compose cleanly
+// even when clicked back-to-back. The `$` sentinel sets the caret so you can
+// type the label immediately; otherwise the caret lands after the text.
+function insertSnippet(key) {
+  const raw = SNIPPETS[key];
+  if (raw == null) return;
+  const caretMark = raw.indexOf("$");
+  const text = raw.replace("$", "");
+
+  const value = editor.value;
+  const caret = editor.selectionStart;
+  // End of the line the caret is on.
+  let lineEnd = value.indexOf("\n", caret);
+  if (lineEnd === -1) lineEnd = value.length;
+  // Indentation of the caret's line.
+  const lineStart = value.lastIndexOf("\n", caret - 1) + 1;
+  const indent = /^[ \t]*/.exec(value.slice(lineStart))?.[0] ?? "";
+
+  // For an empty editor, don't lead with a blank line.
+  const lead = value.length === 0 ? "" : "\n";
+  const body = lead + text;
+  const indented = body.replace(/\n/g, "\n" + indent);
+
+  editor.focus();
+  editor.setRangeText(indented, lineEnd, lineEnd, "end");
+
+  // Place caret at the sentinel: its offset in `body` plus indent added by
+  // every newline that precedes it.
+  if (caretMark >= 0) {
+    const before = lead.length + caretMark;
+    const newlinesBefore = (body.slice(0, before).match(/\n/g) || []).length;
+    const caretPos = lineEnd + before + newlinesBefore * indent.length;
+    editor.setSelectionRange(caretPos, caretPos);
+  }
+  scheduleRender();
+}
+
+const palette = $("palette");
+$("palette-body").addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-snip]");
+  if (btn) insertSnippet(btn.dataset.snip);
+});
+$("palette-toggle").addEventListener("click", () => {
+  const collapsed = palette.classList.toggle("collapsed");
+  $("palette-toggle").setAttribute("aria-expanded", String(!collapsed));
+  $("palette-toggle").textContent = collapsed ? "⊞" : "⊟";
+  localStorage.setItem("layra-palette-collapsed", collapsed ? "1" : "0");
+});
+if (localStorage.getItem("layra-palette-collapsed") === "1") {
+  palette.classList.add("collapsed");
+  $("palette-toggle").setAttribute("aria-expanded", "false");
+  $("palette-toggle").textContent = "⊞";
+}
+
 /* ---------------- export & share ---------------- */
 
 function download(filename, blob) {
@@ -526,10 +741,12 @@ function exportSvg() {
   download("diagram.svg", new Blob([lastGoodSvg], { type: "image/svg+xml" }));
 }
 
-function exportPng() {
+// Rasterize the current SVG to a canvas at the given scale, then hand the
+// resulting blob to `onBlob`. Shared by PNG download and clipboard copy.
+function rasterizePng(scale, onBlob) {
   if (!lastGoodSvg) return;
   const svgEl = preview.querySelector("svg");
-  const scale = 2;
+  if (!svgEl) return;
   const w = Math.max(1, Math.round(svgEl.viewBox.baseVal.width * scale));
   const h = Math.max(1, Math.round(svgEl.viewBox.baseVal.height * scale));
   let svgText = lastGoodSvg;
@@ -549,11 +766,97 @@ function exportPng() {
     canvas.getContext("2d").drawImage(img, 0, 0, w, h);
     URL.revokeObjectURL(url);
     canvas.toBlob((blob) => {
-      if (blob) download("diagram.png", blob);
+      if (blob) onBlob(blob);
       else reportError("PNG export failed: canvas too large");
     }, "image/png");
   };
   img.src = url;
+}
+
+function exportPng(scale = 2) {
+  rasterizePng(scale, (blob) => download(`diagram@${scale}x.png`, blob));
+}
+
+async function copyPngToClipboard(scale = 2) {
+  rasterizePng(scale, async (blob) => {
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      flashExport("Copied PNG!");
+    } catch {
+      reportError("Copy failed: clipboard image write not permitted");
+    }
+  });
+}
+
+// Briefly flash a label on the Export trigger as feedback.
+let exportFlashTimer = null;
+function flashExport(text) {
+  const btn = $("btn-export");
+  if (!btn) return;
+  const original = btn.dataset.label ?? btn.innerHTML;
+  btn.dataset.label = original;
+  btn.textContent = text;
+  clearTimeout(exportFlashTimer);
+  exportFlashTimer = setTimeout(() => {
+    btn.innerHTML = original;
+    delete btn.dataset.label;
+  }, 1200);
+}
+
+// Keyboard-accessible export dropdown: click or Enter/Space to open,
+// arrow keys to move, Escape closes, click-outside closes.
+function setupExportMenu() {
+  const trigger = $("btn-export");
+  const list = $("export-list");
+  const items = [...list.querySelectorAll("[role=menuitem]")];
+
+  const open = () => {
+    list.hidden = false;
+    trigger.setAttribute("aria-expanded", "true");
+    items[0]?.focus();
+  };
+  const close = (focusTrigger = false) => {
+    list.hidden = true;
+    trigger.setAttribute("aria-expanded", "false");
+    if (focusTrigger) trigger.focus();
+  };
+  const toggle = () => (list.hidden ? open() : close());
+
+  const run = (action) => {
+    switch (action) {
+      case "svg": exportSvg(); break;
+      case "png-1": exportPng(1); break;
+      case "png-2": exportPng(2); break;
+      case "png-4": exportPng(4); break;
+      case "copy-png": copyPngToClipboard(2); break;
+    }
+  };
+
+  trigger.addEventListener("click", (e) => { e.stopPropagation(); toggle(); });
+  trigger.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown" || e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      open();
+    }
+  });
+
+  list.addEventListener("click", (e) => {
+    const action = e.target?.dataset?.export;
+    if (!action) return;
+    run(action);
+    close(true);
+  });
+  list.addEventListener("keydown", (e) => {
+    const idx = items.indexOf(document.activeElement);
+    if (e.key === "ArrowDown") { e.preventDefault(); items[(idx + 1) % items.length].focus(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); items[(idx - 1 + items.length) % items.length].focus(); }
+    else if (e.key === "Escape") { e.preventDefault(); close(true); }
+    else if (e.key === "Tab") close();
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!list.hidden && !e.target.closest("#export-menu")) close();
+  });
 }
 
 async function shareLink() {
@@ -612,6 +915,7 @@ async function main() {
   window.addEventListener("hashchange", loadFromHash);
   window.addEventListener("resize", () => {
     if (!userTouchedView) fitToView();
+    else updateMinimapView();
   });
 
   $("btn-theme").addEventListener("click", () => {
@@ -620,8 +924,7 @@ async function main() {
     scheduleRender();
   });
   $("btn-share").addEventListener("click", shareLink);
-  $("btn-svg").addEventListener("click", exportSvg);
-  $("btn-png").addEventListener("click", exportPng);
+  setupExportMenu();
 
   // Keyboard: Tab/Shift+Tab indent in editor, Escape blurs;
   // +/−/0 zoom when focus is outside the editor.
@@ -648,9 +951,9 @@ async function main() {
   window.addEventListener("keydown", (e) => {
     if (document.activeElement === editor) return;
     const center = [viewport.clientWidth / 2, viewport.clientHeight / 2];
-    if (e.key === "+" || e.key === "=") zoomAt(...center, 1.25);
-    else if (e.key === "-") zoomAt(...center, 1 / 1.25);
-    else if (e.key === "0") fitToView();
+    if (e.key === "+" || e.key === "=") smoothZoom(...center, 1.25);
+    else if (e.key === "-") smoothZoom(...center, 1 / 1.25);
+    else if (e.key === "0") fitToView(true);
     else if (e.key === "d" || e.key === "D") $("btn-theme").click();
   });
 }

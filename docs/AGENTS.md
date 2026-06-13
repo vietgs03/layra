@@ -40,6 +40,7 @@ claude mcp add layra -- layra mcp
 |---|---|
 | `validate_diagram {source}` | Parse-check; returns per-line errors. The agent's inner loop: generate → validate → fix → repeat |
 | `render_diagram {source, path?, dark?}` | Write final SVG to disk (or return inline) |
+| `list_shapes {}` | List the node shapes, role classes, edge styles, and icon syntax the engine supports — call this first so you only use shapes that actually render |
 
 Typical agent flow:
 

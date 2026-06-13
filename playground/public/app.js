@@ -478,6 +478,11 @@ async function decodeSource(hash) {
 
 function applyTheme() {
   document.documentElement.classList.toggle("dark", dark);
+  const btn = $("btn-theme");
+  if (btn) {
+    btn.setAttribute("aria-pressed", String(dark));
+    btn.title = dark ? "Switch to light mode (D)" : "Switch to dark mode (D)";
+  }
 }
 
 function reportError(message) {
@@ -660,10 +665,12 @@ function exportSvg() {
   download("diagram.svg", new Blob([lastGoodSvg], { type: "image/svg+xml" }));
 }
 
-function exportPng() {
+// Rasterize the current SVG to a canvas at the given scale, then hand the
+// resulting blob to `onBlob`. Shared by PNG download and clipboard copy.
+function rasterizePng(scale, onBlob) {
   if (!lastGoodSvg) return;
   const svgEl = preview.querySelector("svg");
-  const scale = 2;
+  if (!svgEl) return;
   const w = Math.max(1, Math.round(svgEl.viewBox.baseVal.width * scale));
   const h = Math.max(1, Math.round(svgEl.viewBox.baseVal.height * scale));
   let svgText = lastGoodSvg;
@@ -683,11 +690,97 @@ function exportPng() {
     canvas.getContext("2d").drawImage(img, 0, 0, w, h);
     URL.revokeObjectURL(url);
     canvas.toBlob((blob) => {
-      if (blob) download("diagram.png", blob);
+      if (blob) onBlob(blob);
       else reportError("PNG export failed: canvas too large");
     }, "image/png");
   };
   img.src = url;
+}
+
+function exportPng(scale = 2) {
+  rasterizePng(scale, (blob) => download(`diagram@${scale}x.png`, blob));
+}
+
+async function copyPngToClipboard(scale = 2) {
+  rasterizePng(scale, async (blob) => {
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      flashExport("Copied PNG!");
+    } catch {
+      reportError("Copy failed: clipboard image write not permitted");
+    }
+  });
+}
+
+// Briefly flash a label on the Export trigger as feedback.
+let exportFlashTimer = null;
+function flashExport(text) {
+  const btn = $("btn-export");
+  if (!btn) return;
+  const original = btn.dataset.label ?? btn.innerHTML;
+  btn.dataset.label = original;
+  btn.textContent = text;
+  clearTimeout(exportFlashTimer);
+  exportFlashTimer = setTimeout(() => {
+    btn.innerHTML = original;
+    delete btn.dataset.label;
+  }, 1200);
+}
+
+// Keyboard-accessible export dropdown: click or Enter/Space to open,
+// arrow keys to move, Escape closes, click-outside closes.
+function setupExportMenu() {
+  const trigger = $("btn-export");
+  const list = $("export-list");
+  const items = [...list.querySelectorAll("[role=menuitem]")];
+
+  const open = () => {
+    list.hidden = false;
+    trigger.setAttribute("aria-expanded", "true");
+    items[0]?.focus();
+  };
+  const close = (focusTrigger = false) => {
+    list.hidden = true;
+    trigger.setAttribute("aria-expanded", "false");
+    if (focusTrigger) trigger.focus();
+  };
+  const toggle = () => (list.hidden ? open() : close());
+
+  const run = (action) => {
+    switch (action) {
+      case "svg": exportSvg(); break;
+      case "png-1": exportPng(1); break;
+      case "png-2": exportPng(2); break;
+      case "png-4": exportPng(4); break;
+      case "copy-png": copyPngToClipboard(2); break;
+    }
+  };
+
+  trigger.addEventListener("click", (e) => { e.stopPropagation(); toggle(); });
+  trigger.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown" || e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      open();
+    }
+  });
+
+  list.addEventListener("click", (e) => {
+    const action = e.target?.dataset?.export;
+    if (!action) return;
+    run(action);
+    close(true);
+  });
+  list.addEventListener("keydown", (e) => {
+    const idx = items.indexOf(document.activeElement);
+    if (e.key === "ArrowDown") { e.preventDefault(); items[(idx + 1) % items.length].focus(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); items[(idx - 1 + items.length) % items.length].focus(); }
+    else if (e.key === "Escape") { e.preventDefault(); close(true); }
+    else if (e.key === "Tab") close();
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!list.hidden && !e.target.closest("#export-menu")) close();
+  });
 }
 
 async function shareLink() {
@@ -755,8 +848,7 @@ async function main() {
     scheduleRender();
   });
   $("btn-share").addEventListener("click", shareLink);
-  $("btn-svg").addEventListener("click", exportSvg);
-  $("btn-png").addEventListener("click", exportPng);
+  setupExportMenu();
 
   // Keyboard: Tab/Shift+Tab indent in editor, Escape blurs;
   // +/−/0 zoom when focus is outside the editor.

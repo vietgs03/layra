@@ -26,10 +26,21 @@
     <button data-tpl="git">Git</button>
   </div>
   <div class="actions">
-    <button id="btn-theme" title="Toggle dark mode (D)">🌓</button>
+    <button id="btn-theme" class="icon-btn" title="Toggle dark mode (D)" aria-label="Toggle dark mode" aria-pressed="false">🌓</button>
     <button id="btn-share" title="Copy shareable link">Share</button>
-    <button id="btn-svg" title="Download SVG">SVG</button>
-    <button id="btn-png" title="Download PNG">PNG</button>
+    <div class="menu" id="export-menu">
+      <button id="btn-export" class="menu-trigger" aria-haspopup="true" aria-expanded="false" title="Export diagram">
+        Export <span class="caret">▾</span>
+      </button>
+      <div class="menu-list" id="export-list" role="menu" hidden>
+        <button role="menuitem" data-export="svg">SVG</button>
+        <button role="menuitem" data-export="png-1">PNG · 1×</button>
+        <button role="menuitem" data-export="png-2">PNG · 2×</button>
+        <button role="menuitem" data-export="png-4">PNG · 4×</button>
+        <div class="menu-sep"></div>
+        <button role="menuitem" data-export="copy-png">Copy PNG to clipboard</button>
+      </div>
+    </div>
   </div>
 </header>
 

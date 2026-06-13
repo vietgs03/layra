@@ -64,7 +64,7 @@ header {
 .templates button:hover { color: var(--text); background: var(--panel); }
 .templates button.active { color: var(--accent); border-color: var(--border); background: var(--panel); }
 
-.actions { display: flex; gap: 6px; flex: none; }
+.actions { display: flex; gap: 6px; flex: none; align-items: center; }
 .actions button {
   font: inherit;
   font-size: 13px;
@@ -74,8 +74,70 @@ header {
   background: var(--panel);
   color: var(--text);
   cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, transform 0.06s;
 }
 .actions button:hover { border-color: var(--accent); }
+.actions button:active { transform: translateY(1px); }
+.actions button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Theme toggle: square icon button with a subtle hover lift. */
+.icon-btn {
+  width: 34px;
+  height: 32px;
+  padding: 0 !important;
+  font-size: 15px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.icon-btn:hover { background: color-mix(in srgb, var(--accent) 10%, var(--panel)); }
+
+/* Export dropdown */
+.menu { position: relative; }
+.menu-trigger { display: inline-flex; align-items: center; gap: 5px; }
+.menu-trigger .caret { font-size: 10px; color: var(--dim); transition: transform 0.15s; }
+.menu-trigger[aria-expanded="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--panel)); }
+.menu-trigger[aria-expanded="true"] .caret { transform: rotate(180deg); }
+.menu-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 190px;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 8px 28px rgba(0,0,0,0.18);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  animation: menu-in 0.12s ease-out;
+}
+.menu-list[hidden] { display: none; }
+@keyframes menu-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.menu-list button {
+  text-align: left;
+  border: 0 !important;
+  border-radius: 6px;
+  background: transparent;
+  padding: 7px 10px;
+  font-size: 13px;
+  width: 100%;
+}
+.menu-list button:hover,
+.menu-list button:focus-visible {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--text);
+  outline: none;
+}
+.menu-sep { height: 1px; background: var(--border); margin: 4px 2px; }
 
 main { display: flex; flex: 1; min-height: 0; }
 

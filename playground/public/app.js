@@ -167,6 +167,30 @@ let dark = matchMedia("(prefers-color-scheme: dark)").matches;
 let lastGoodSvg = "";
 let rafPending = false;
 
+/* ---------------- animated edges ---------------- */
+// A persisted toggle that marches the dashes on the rendered edge paths via a
+// CSS class on #preview (see style.css). Driven purely in the playground so it
+// works regardless of any engine-side <animate> support. The class lives on
+// #preview (which survives SVG swaps), so it persists across re-renders.
+
+const ANIMATE_KEY = "layra-animate-edges";
+let animateEdges = localStorage.getItem(ANIMATE_KEY) === "1";
+
+function applyAnimateEdges() {
+  preview.classList.toggle("animate-edges", animateEdges);
+  const btn = $("btn-animate");
+  if (btn) {
+    btn.setAttribute("aria-pressed", String(animateEdges));
+    btn.title = animateEdges ? "Stop animating edges (A)" : "Animate edges (A)";
+  }
+}
+
+function toggleAnimateEdges() {
+  animateEdges = !animateEdges;
+  localStorage.setItem(ANIMATE_KEY, animateEdges ? "1" : "0");
+  applyAnimateEdges();
+}
+
 /* ---------------- pan & zoom ---------------- */
 
 const view = { x: 40, y: 40, scale: 1 };
@@ -1443,6 +1467,7 @@ const COMMANDS = [
   { id: "export-png-4", title: "Export PNG · 4×", icon: "▤", run: () => exportPng(4) },
   { id: "copy-png", title: "Copy PNG to clipboard", icon: "⧉", run: () => copyPngToClipboard(2) },
   { id: "toggle-theme", title: "Toggle dark mode", hint: "D", icon: "◐", run: () => toggleTheme() },
+  { id: "toggle-animate", title: "Animate edges", desc: "March the dashes on edges", hint: "A", icon: "⇝", run: () => toggleAnimateEdges() },
   { id: "examples", title: "Open examples gallery", icon: "✦", run: () => openGallery() },
   { id: "share", title: "Copy shareable link", icon: "↗", run: () => shareLink() },
 ];
@@ -1603,6 +1628,7 @@ async function main() {
     editor.value = saved ?? "";
   }
   applyTheme();
+  applyAnimateEdges();
   buildInfraPalette();
   doRender();
   fitToView();
@@ -1628,6 +1654,7 @@ async function main() {
   });
 
   $("btn-theme").addEventListener("click", toggleTheme);
+  $("btn-animate").addEventListener("click", toggleAnimateEdges);
   $("btn-share").addEventListener("click", shareLink);
   setupExportMenu();
   // Test hook: lets headless checks invoke Share without a click/clipboard.
@@ -1672,6 +1699,7 @@ async function main() {
     else if (e.key === "-") smoothZoom(...center, 1 / 1.25);
     else if (e.key === "0") fitToView(true);
     else if (e.key === "d" || e.key === "D") $("btn-theme").click();
+    else if (e.key === "a" || e.key === "A") $("btn-animate").click();
   });
 }
 

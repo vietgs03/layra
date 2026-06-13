@@ -94,6 +94,31 @@ header {
   justify-content: center;
 }
 .icon-btn:hover { background: color-mix(in srgb, var(--accent) 10%, var(--panel)); }
+.icon-btn[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel));
+}
+
+/* ---------------- animated edges ---------------- */
+/* When #preview has .animate-edges, marching-ants the dashed/dotted edge
+   paths and add a subtle dash flow to solid/thick edges. Works directly on
+   the engine's edge <path> elements (inside <g data-edge>), so it functions
+   regardless of any engine-side <animate> support. Respects reduced-motion. */
+#preview.animate-edges g[data-edge] > path[stroke-dasharray] {
+  animation: layra-march 0.9s linear infinite;
+}
+/* Solid + thick edges have no dasharray; give them a flowing dash overlay. */
+#preview.animate-edges g[data-edge] > path:not([stroke-dasharray]) {
+  stroke-dasharray: 9 7;
+  animation: layra-march 1.1s linear infinite;
+}
+@keyframes layra-march {
+  to { stroke-dashoffset: -32; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #preview.animate-edges g[data-edge] > path { animation: none; }
+}
 
 /* Export dropdown */
 .menu { position: relative; }

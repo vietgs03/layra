@@ -709,8 +709,78 @@ function insertSnippet(key) {
   scheduleRender();
 }
 
+// Insert an arbitrary node snippet (text) at the caret, on its own indented
+// line, with the caret landing on the `$` sentinel if present. Shares the
+// indentation/positioning logic with insertSnippet but takes raw text so the
+// infra icon grid can build snippets dynamically.
+function insertNodeText(raw) {
+  const caretMark = raw.indexOf("$");
+  const text = raw.replace("$", "");
+  const value = editor.value;
+  const caret = editor.selectionStart;
+  let lineEnd = value.indexOf("\n", caret);
+  if (lineEnd === -1) lineEnd = value.length;
+  const lineStart = value.lastIndexOf("\n", caret - 1) + 1;
+  const indent = /^[ \t]*/.exec(value.slice(lineStart))?.[0] ?? "";
+  const lead = value.length === 0 ? "" : "\n";
+  const body = lead + text;
+  const indented = body.replace(/\n/g, "\n" + indent);
+  editor.focus();
+  editor.setRangeText(indented, lineEnd, lineEnd, "end");
+  if (caretMark >= 0) {
+    const before = lead.length + caretMark;
+    const newlinesBefore = (body.slice(0, before).match(/\n/g) || []).length;
+    const caretPos = lineEnd + before + newlinesBefore * indent.length;
+    editor.setSelectionRange(caretPos, caretPos);
+  }
+  scheduleRender();
+}
+
+// Build the Infra icon grid: one button per bundled aws:* icon, each showing
+// the real inline SVG glyph. Clicking inserts a node like
+// `node["{icon:aws:lambda} Lambda"]` (caret lands ready to edit the label).
+async function buildInfraPalette() {
+  const host = $("palette-infra");
+  if (!host) return;
+  let icons;
+  try {
+    const res = await fetch("./infra-icons.json");
+    if (!res.ok) return;
+    icons = await res.json();
+  } catch { return; }
+
+  const frag = document.createDocumentFragment();
+  let n = 1;
+  for (const [key, def] of Object.entries(icons)) {
+    const name = key.split(":")[1];           // e.g. "lambda"
+    const id = name.replace(/[^a-z0-9]/g, ""); // node id base, e.g. "loadbalancer"
+    const label = def.label ?? name;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "palette-icon";
+    btn.title = `Insert {icon:${key}} ${label}`;
+    // Unique node id per insertion so repeated clicks don't collide.
+    btn.dataset.snip = `${id}${n}["{icon:${key}} ${label}"]`;
+    btn.dataset.infra = key;
+    const svg =
+      `<svg viewBox="0 0 ${def.width} ${def.height}" width="22" height="22" ` +
+      `xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${def.body}</svg>`;
+    btn.innerHTML = `<span class="pi-icon">${svg}</span><span class="pi-name">${label}</span>`;
+    frag.appendChild(btn);
+    n++;
+  }
+  host.replaceChildren(frag);
+}
+
 const palette = $("palette");
 $("palette-body").addEventListener("click", (e) => {
+  const infra = e.target.closest("[data-infra]");
+  if (infra) {
+    // Counter keeps node ids unique across repeated clicks.
+    insertNodeText(infra.dataset.snip);
+    infra.dataset.snip = infra.dataset.snip.replace(/^(\D*)\d+/, (_, p) => p + Math.floor(Math.random() * 1e6));
+    return;
+  }
   const btn = e.target.closest("[data-snip]");
   if (btn) insertSnippet(btn.dataset.snip);
 });
@@ -902,6 +972,7 @@ async function main() {
     editor.value = localStorage.getItem(AUTOSAVE_KEY) ?? TEMPLATES.flowchart;
   }
   applyTheme();
+  buildInfraPalette();
   doRender();
   fitToView();
 

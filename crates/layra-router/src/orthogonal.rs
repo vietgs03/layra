@@ -37,8 +37,15 @@ pub(crate) type Port = (Point, (f32, f32));
 
 /// Choose source/target attachment ports based on the layout direction and
 /// the relative position of the two node rects. Vertical layouts attach to
-/// top/bottom centers; horizontal layouts to left/right centers; same-rank
-/// edges fall back to the cross axis.
+/// top/bottom borders; horizontal layouts to left/right borders.
+///
+/// **Port-aware**: along the attachment side, the connection point slides
+/// toward the *other* endpoint (clamped inside the node, with a small inset
+/// so it never lands on a corner) instead of always sitting at the border
+/// centre. Edges between offset nodes then leave/enter facing each other,
+/// which reads cleaner and shortens the routed path. When the two nodes are
+/// aligned on the cross axis the offset is zero, so it degenerates to the
+/// border centre.
 pub(crate) fn ports(src: Rect, dst: Rect, dir: Direction) -> (Port, Port) {
     let sc = src.center();
     let dc = dst.center();
@@ -55,28 +62,51 @@ pub(crate) fn ports(src: Rect, dst: Rect, dir: Direction) -> (Port, Port) {
     };
 
     if use_vertical {
+        // Attach on top/bottom borders; slide x toward the other node.
+        let src_x = facing_coord(dc.x, src.x, src.right());
+        let dst_x = facing_coord(sc.x, dst.x, dst.right());
         if dy >= 0.0 {
             (
-                (Point::new(sc.x, src.bottom()), (0.0, 1.0)),
-                (Point::new(dc.x, dst.y), (0.0, -1.0)),
+                (Point::new(src_x, src.bottom()), (0.0, 1.0)),
+                (Point::new(dst_x, dst.y), (0.0, -1.0)),
             )
         } else {
             (
-                (Point::new(sc.x, src.y), (0.0, -1.0)),
-                (Point::new(dc.x, dst.bottom()), (0.0, 1.0)),
+                (Point::new(src_x, src.y), (0.0, -1.0)),
+                (Point::new(dst_x, dst.bottom()), (0.0, 1.0)),
             )
         }
-    } else if dx >= 0.0 {
-        (
-            (Point::new(src.right(), sc.y), (1.0, 0.0)),
-            (Point::new(dst.x, dc.y), (-1.0, 0.0)),
-        )
     } else {
-        (
-            (Point::new(src.x, sc.y), (-1.0, 0.0)),
-            (Point::new(dst.right(), dc.y), (1.0, 0.0)),
-        )
+        // Attach on left/right borders; slide y toward the other node.
+        let src_y = facing_coord(dc.y, src.y, src.bottom());
+        let dst_y = facing_coord(sc.y, dst.y, dst.bottom());
+        if dx >= 0.0 {
+            (
+                (Point::new(src.right(), src_y), (1.0, 0.0)),
+                (Point::new(dst.x, dst_y), (-1.0, 0.0)),
+            )
+        } else {
+            (
+                (Point::new(src.x, src_y), (-1.0, 0.0)),
+                (Point::new(dst.right(), dst_y), (1.0, 0.0)),
+            )
+        }
     }
+}
+
+/// Pick the along-border coordinate for a port: slide toward the other
+/// endpoint (`other_center`), clamped to the node's border span `[lo, hi]`
+/// with a small inset so the port never sits on a corner. When the endpoints
+/// are aligned on this axis the result is the border centre.
+fn facing_coord(other_center: f32, lo: f32, hi: f32) -> f32 {
+    // Inset keeps the stub clear of the corner radius / adjacent border.
+    const INSET: f32 = 6.0;
+    let (lo, hi) = (lo + INSET, hi - INSET);
+    if hi <= lo {
+        // Node too small to offset meaningfully; use the centre.
+        return (lo + hi) / 2.0;
+    }
+    other_center.clamp(lo, hi)
 }
 
 /// Move a port point outward along its normal by `STUB` so the connector

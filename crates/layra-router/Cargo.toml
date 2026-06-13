@@ -9,3 +9,6 @@ authors.workspace = true
 
 [dependencies]
 layra-core = { workspace = true }
+
+[dev-dependencies]
+layra-layout = { workspace = true }

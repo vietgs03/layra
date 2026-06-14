@@ -244,11 +244,16 @@ impl<'a> Parser<'a> {
         };
 
         let parent = self.subgraph_stack.last().copied();
+        // AWS container look: `subgraph vpc["{icon:aws:vpc} VPC"]` styles the
+        // cluster the AWS way. The icon ref is stripped from the title text
+        // (mirrors node label handling) and stashed on the subgraph.
+        let (label, icon) = extract_icon(label);
         let id = self.graph.add_subgraph(Subgraph {
             name,
             label,
             nodes: Vec::new(),
             parent,
+            icon,
             rect: Default::default(),
         });
         self.subgraph_stack.push(id);
@@ -888,6 +893,36 @@ mod tests {
         assert_eq!(g.subgraphs.len(), 1);
         assert_eq!(g.subgraphs[0].label, "Data Plane");
         assert_eq!(g.subgraphs[0].nodes.len(), 2);
+    }
+
+    #[test]
+    fn subgraph_icon_extracted_for_aws_container() {
+        // `subgraph vpc["{icon:aws:vpc} VPC"]` opts into the AWS container
+        // look: the icon is stripped from the title and stashed on the
+        // subgraph for the renderer (L12).
+        let g = parse(
+            r#"flowchart TB
+              subgraph vpc["{icon:aws:vpc} VPC 10.0.0.0/16"]
+                ec2["EC2"]
+              end
+            "#,
+        )
+        .unwrap();
+        assert_eq!(g.subgraphs[0].icon.as_deref(), Some("aws:vpc"));
+        assert_eq!(g.subgraphs[0].label, "VPC 10.0.0.0/16");
+    }
+
+    #[test]
+    fn plain_subgraph_has_no_icon() {
+        let g = parse(
+            r#"flowchart TB
+              subgraph data["Data Plane"]
+                db[("PG")]
+              end
+            "#,
+        )
+        .unwrap();
+        assert!(g.subgraphs[0].icon.is_none());
     }
 
     #[test]

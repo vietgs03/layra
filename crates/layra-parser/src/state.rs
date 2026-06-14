@@ -95,6 +95,7 @@ impl StateParser {
                     label: name.to_string(),
                     nodes: Vec::new(),
                     parent,
+                    icon: None,
                     rect: Default::default(),
                 });
                 self.subgraph_stack.push(id);

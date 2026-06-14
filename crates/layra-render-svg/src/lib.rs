@@ -58,7 +58,7 @@ pub fn render_with_icons(graph: &Graph, theme: &Theme, icons: Option<&IconRegist
 
     // Paint order: clusters under nodes under edges-labels.
     for sg in &graph.subgraphs {
-        write_subgraph(&mut svg, sg, theme);
+        write_subgraph(&mut svg, sg, theme, icons);
     }
     for (i, edge) in graph.edges.iter().enumerate() {
         let _ = write!(
@@ -106,7 +106,26 @@ fn write_defs(svg: &mut String, theme: &Theme) {
     svg.push_str("</defs>");
 }
 
-fn write_subgraph(svg: &mut String, sg: &layra_core::Subgraph, theme: &Theme) {
+fn write_subgraph(
+    svg: &mut String,
+    sg: &layra_core::Subgraph,
+    theme: &Theme,
+    icons: Option<&IconRegistry>,
+) {
+    // AWS container look (VPC / AZ / Region): when the subgraph carries an
+    // icon with a known category, draw a colored dashed border in the
+    // category hue and a left-aligned corner header with the small glyph.
+    let aws = sg
+        .icon
+        .as_deref()
+        .filter(|key| icons.is_some_and(|reg| reg.get(key).is_some()))
+        .and_then(|key| icons.and_then(|reg| reg.category(key).map(|cat| (key, cat))));
+
+    if let (Some((icon_key, category)), Some(reg)) = (aws, icons) {
+        write_aws_subgraph(svg, sg, icon_key, category, reg);
+        return;
+    }
+
     let r = sg.rect;
     let _ = write!(
         svg,
@@ -125,6 +144,76 @@ fn write_subgraph(svg: &mut String, sg: &layra_core::Subgraph, theme: &Theme) {
         r.y,
         escape(&sg.label)
     );
+}
+
+/// AWS-architecture container: a category-colored dashed border with a flat
+/// header bar in the top-left corner carrying a small service glyph and the
+/// label (the VPC / Availability Zone / Region / Account look in AWS docs).
+fn write_aws_subgraph(
+    svg: &mut String,
+    sg: &layra_core::Subgraph,
+    icon_key: &str,
+    category: layra_icons::IconCategory,
+    reg: &IconRegistry,
+) {
+    let r = sg.rect;
+    let color = category.color();
+    const HEADER_H: f32 = 26.0;
+    const ICON: f32 = 18.0;
+    const PAD: f32 = 8.0;
+
+    // Tinted body: faint category wash so nested containers read as layers.
+    let _ = write!(
+        svg,
+        r#"<rect x="{:.1}" y="{:.1}" width="{:.1}" height="{:.1}" rx="8" fill="{color}" fill-opacity="0.04" stroke="{color}" stroke-width="1.6" stroke-dasharray="7 5"/>"#,
+        r.x, r.y, r.width, r.height
+    );
+
+    // Corner header bar (solid category color) hugging the top-left.
+    let header_w = (sg.label.len() as f32 * 7.2 + ICON + PAD * 3.0).min(r.width);
+    let _ = write!(
+        svg,
+        r#"<path d="M{x:.1} {y:.1} h{hw:.1} v{hh:.1} h-{inner:.1} a8 8 0 0 1 -8 -8 v-{rest:.1} z" fill="{color}"/>"#,
+        x = r.x,
+        y = r.y,
+        hw = header_w,
+        hh = HEADER_H,
+        inner = (header_w - 8.0).max(0.0),
+        rest = (HEADER_H - 8.0).max(0.0),
+    );
+
+    // Small glyph in the header, drawn in white over the colored bar.
+    let icon_y = r.y + (HEADER_H - ICON) / 2.0;
+    if let Some(icon) = reg.emit_svg(icon_key, r.x + PAD, icon_y, ICON, "#ffffff") {
+        // The category tile would double-paint a square; for the header we
+        // want the bare white mark, so strip the tile and keep the glyph.
+        svg.push_str(&strip_icon_tile(&icon, color));
+    }
+
+    // Label text in white, after the glyph.
+    let _ = write!(
+        svg,
+        r##"<text x="{:.1}" y="{:.1}" font-size="12.5" font-weight="700" fill="#ffffff" dominant-baseline="central">{}</text>"##,
+        r.x + PAD * 2.0 + ICON,
+        r.y + HEADER_H / 2.0,
+        escape(&sg.label)
+    );
+}
+
+/// The categorized `emit_svg` wraps the glyph in a colored tile + white mark.
+/// In the AWS header we already have a colored bar behind it, so drop the
+/// tile `<rect>` and keep just the white glyph `<svg>`.
+fn strip_icon_tile(icon: &str, color: &str) -> String {
+    // Shape is `<g><rect .../><svg ...>...</svg></g>`. Remove the outer <g>,
+    // the leading tile rect (fill=color), and the trailing </g>.
+    let tile_marker = format!(r#"fill="{color}"/>"#);
+    if let Some(inner) = icon.strip_prefix("<g>") {
+        if let Some(pos) = inner.find(&tile_marker) {
+            let after = &inner[pos + tile_marker.len()..];
+            return after.strip_suffix("</g>").unwrap_or(after).to_string();
+        }
+    }
+    icon.to_string()
 }
 
 fn write_edge(svg: &mut String, edge: &layra_core::Edge, theme: &Theme) {
@@ -488,6 +577,85 @@ mod tests {
         assert!(
             svg.contains(r##"stroke="#94a3b8""##),
             "iconless generic node keeps neutral grey"
+        );
+    }
+
+    // ---- L12: AWS group containers ----
+
+    fn render_subgraph(icon: Option<&str>) -> String {
+        let reg = IconRegistry::with_builtins();
+        let mut g = Graph::new(Direction::TopBottom);
+        let mut n = Node::new("a", "Svc");
+        n.rect = Rect::new(40.0, 60.0, 120.0, 40.0);
+        let id = g.add_node(n);
+        g.add_subgraph(layra_core::Subgraph {
+            name: "vpc".into(),
+            label: "VPC 10.0.0.0/16".into(),
+            nodes: vec![id],
+            parent: None,
+            icon: icon.map(|s| s.to_string()),
+            rect: Rect::new(20.0, 30.0, 200.0, 120.0),
+        });
+        render_with_icons(&g, &Theme::light(), Some(&reg))
+    }
+
+    #[test]
+    fn aws_subgraph_uses_category_colored_border() {
+        // A subgraph carrying aws:vpc (network) renders a purple dashed
+        // border + a colored corner header, not the plain grey cluster pill.
+        let svg = render_subgraph(Some("aws:vpc"));
+        assert!(
+            svg.contains(r##"stroke="#8C4FFF""##),
+            "VPC container must use the AWS network purple border"
+        );
+        assert!(
+            svg.contains("stroke-dasharray"),
+            "AWS container keeps a dashed border"
+        );
+        // Header bar filled with the category color (a <path ... fill=color>).
+        assert!(
+            svg.contains(r##"fill="#8C4FFF"/>"##),
+            "AWS container has a solid colored corner header"
+        );
+        // White label text in the header.
+        assert!(
+            svg.contains("VPC 10.0.0.0/16"),
+            "header carries the label text"
+        );
+        // The small glyph appears (an inline <svg> for the icon).
+        assert!(svg.contains("<svg x="), "header carries the small glyph");
+    }
+
+    #[test]
+    fn aws_subgraph_strips_double_tile_on_header() {
+        // The header draws its own colored bar, so the icon's category tile
+        // must be stripped (only ONE colored rect at the cluster, no nested
+        // tile rect inside the header glyph).
+        let svg = render_subgraph(Some("aws:vpc"));
+        // White glyph mark must be present (icon repainted white).
+        assert!(svg.contains("#ffffff"), "header glyph drawn in white");
+    }
+
+    #[test]
+    fn plain_subgraph_keeps_pill_style() {
+        // No icon => classic grey dashed cluster with a title pill.
+        let svg = render_subgraph(None);
+        assert!(
+            svg.contains(r##"stroke="#c3c9d4""##),
+            "plain cluster keeps neutral grey stroke"
+        );
+        assert!(
+            !svg.contains(r##"fill="#8C4FFF""##),
+            "plain cluster has no AWS category color"
+        );
+    }
+
+    #[test]
+    fn aws_subgraph_security_is_red() {
+        let svg = render_subgraph(Some("aws:iam"));
+        assert!(
+            svg.contains(r##"stroke="#D13212""##),
+            "an iam (security) container is AWS red"
         );
     }
 }

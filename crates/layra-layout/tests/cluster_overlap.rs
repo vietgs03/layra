@@ -47,6 +47,7 @@ fn cluster_rect_does_not_overlap_outside_nodes() {
         label: "Data Plane".into(),
         nodes: vec![mq],
         parent: None,
+        icon: None,
         rect: Default::default(),
     });
     g.nodes[mq.index()].parent = Some(sg);

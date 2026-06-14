@@ -95,6 +95,9 @@
         <div class="gutter" id="gutter" aria-hidden="true"></div>
         <textarea id="editor" spellcheck="false" autocapitalize="off" autocomplete="off"
           aria-label="Diagram source editor" aria-describedby="status" aria-invalid="false"></textarea>
+        <!-- Inline diagnostics overlay (U21): squiggly underlines aligned to the
+             offending editor lines; click to jump / apply a quick-fix. -->
+        <div class="squiggles" id="squiggles" aria-hidden="true"></div>
       </div>
       <div id="status" class="status ok" role="status" aria-live="polite">ready</div>
     </div>

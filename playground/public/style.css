@@ -360,6 +360,118 @@ main { display: flex; flex: 1; min-height: 0; }
   opacity: 0.7;
 }
 .gutter .gl.active { color: var(--accent); opacity: 1; font-weight: 600; }
+.gutter .gl.has-issue { position: relative; }
+.gutter .gl.has-issue::after {
+  content: "";
+  position: absolute;
+  right: 1px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--error);
+}
+.gutter .gl.has-issue.warn-issue::after { background: #d97706; }
+
+/* ---------------- inline diagnostics (U21) ---------------- */
+/* A non-interactive overlay laid over the textarea text area (right of the
+   44px gutter). Each diagnostic gets a wavy underline drawn on the offending
+   line; the marker itself is clickable to jump / show a quick-fix. The layer
+   pointer-events:none, the markers re-enable pointer-events. */
+.squiggles {
+  position: absolute;
+  top: 0;
+  left: 44px;
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 2;
+}
+.squiggle {
+  position: absolute;
+  height: 21px;          /* one line-height (13.5px * 1.55 ≈ 21px) */
+  pointer-events: none;  /* underline never blocks caret/selection */
+  /* wavy red underline at the text baseline */
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='6' height='3'><path d='M0 2 Q1.5 0 3 2 T6 2' fill='none' stroke='%23dc2626' stroke-width='0.9'/></svg>");
+  background-repeat: repeat-x;
+  background-position: left bottom 2px;
+}
+.squiggle.warn {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='6' height='3'><path d='M0 2 Q1.5 0 3 2 T6 2' fill='none' stroke='%23d97706' stroke-width='0.9'/></svg>");
+}
+.squiggle-flag {
+  /* a small clickable flag badge sitting at the end of the underlined line */
+  position: absolute;
+  right: -16px;
+  top: 50%;
+  transform: translateY(-50%);
+  font: 700 9px/1 Menlo, Consolas, monospace;
+  color: #fff;
+  background: var(--error);
+  border: none;
+  border-radius: 50%;
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.9;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.squiggle.warn .squiggle-flag { background: #d97706; }
+.squiggle-flag:hover { opacity: 1; transform: translateY(-50%) scale(1.14); }
+
+/* The quick-fix popover anchored under a clicked diagnostic. */
+.quickfix {
+  position: absolute;
+  z-index: 30;
+  min-width: 220px;
+  max-width: 340px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.28);
+  padding: 10px 12px;
+  font-size: 12.5px;
+  color: var(--text);
+}
+.quickfix-msg { display: block; margin-bottom: 8px; line-height: 1.4; }
+.quickfix-msg .qf-line { color: var(--dim); font-family: Menlo, Consolas, monospace; }
+.quickfix-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.quickfix-btn {
+  border: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.quickfix-btn:hover { background: color-mix(in srgb, var(--accent) 26%, transparent); }
+.quickfix-btn.secondary {
+  border-color: var(--border);
+  background: transparent;
+  color: var(--dim);
+  font-weight: 500;
+}
+.quickfix-btn.secondary:hover { color: var(--text); border-color: var(--accent); }
+.quickfix-fix-preview {
+  display: block;
+  margin: 4px 0 8px;
+  padding: 5px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-family: Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  color: var(--ok);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 
 /* ---------------- shape/snippet palette ---------------- */
 .palette {

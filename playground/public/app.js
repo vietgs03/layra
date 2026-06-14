@@ -119,21 +119,129 @@ const TEMPLATES = {
   merge develop tag: "v1.0"
   commit
 `,
-  aws: `flowchart LR
+  aws: `flowchart TB
+  dns["{icon:mdi:dns} Route 53"]:::client
   cdn["{icon:aws:cdn} CloudFront"]:::client
-  gw["{icon:aws:gateway} API Gateway"]
-  fn["{icon:aws:lambda} Lambda"]:::highlight
-  cache[("{icon:aws:cache} ElastiCache")]:::database
-  db[("{icon:aws:database} DynamoDB")]:::database
-  bucket["{icon:aws:s3} S3 Bucket"]
-  q{{"{icon:aws:queue} SQS Queue"}}:::queue
+  static[("{icon:aws:s3} S3 static site")]:::storage
 
-  cdn -->|HTTPS| gw
-  gw -->|invoke| fn
-  fn -->|read/write| db
-  fn -.->|cache| cache
-  fn -->|store| bucket
+  subgraph vpc["VPC · 10.0.0.0/16"]
+    alb["{icon:aws:load-balancer} App Load Balancer"]:::gateway
+    subgraph azA["Availability Zone A"]
+      web1["{icon:aws:server} EC2 web"]:::compute
+      svc1["{icon:aws:container} ECS service"]:::compute
+    end
+    subgraph azB["Availability Zone B"]
+      web2["{icon:aws:server} EC2 web"]:::compute
+      svc2["{icon:aws:container} ECS service"]:::compute
+    end
+    rds[("{icon:aws:database} RDS · Multi-AZ")]:::database
+  end
+
+  api["{icon:aws:gateway} API Gateway"]:::gateway
+  fn["{icon:aws:lambda} Lambda"]:::highlight
+  ddb[("{icon:aws:database} DynamoDB")]:::database
+  cache[("{icon:aws:cache} ElastiCache")]:::cache
+  q{{"{icon:aws:queue} SQS"}}:::queue
+  sns["{icon:mdi:bullhorn} SNS"]:::queue
+
+  dns --> cdn
+  cdn -->|static| static
+  cdn ==>|HTTPS| alb
+  alb --> web1
+  alb --> web2
+  alb --> svc1
+  alb --> svc2
+  web1 --> rds
+  web2 --> rds
+  svc1 -.-> cache
+  svc2 -.-> cache
+  cdn ==>|/api| api
+  api ==>|invoke| fn
+  fn --> ddb
   fn ==>|enqueue| q
+  q -.->|fan-out| sns
+`,
+  microservices: `flowchart LR
+  client["{icon:mdi:web} Web & Mobile"]:::client
+  gw["{icon:aws:gateway} API Gateway"]:::gateway
+
+  subgraph mesh["Service Mesh"]
+    auth["{icon:aws:server} Auth"]:::service
+    orders["{icon:aws:server} Orders"]:::service
+    catalog["{icon:aws:server} Catalog"]:::service
+    pay["{icon:aws:server} Payments"]:::service
+  end
+
+  authdb[("{icon:aws:database} Auth DB")]:::database
+  ordersdb[("{icon:aws:database} Orders DB")]:::database
+  cache[("{icon:aws:cache} Redis")]:::cache
+  bus{{"{icon:aws:queue} Event Bus"}}:::queue
+
+  client ==>|HTTPS| gw
+  gw --> auth
+  gw --> orders
+  gw --> catalog
+  gw --> pay
+  auth --> authdb
+  orders --> ordersdb
+  catalog -.->|read-through| cache
+  orders ==>|publish| bus
+  pay ==>|publish| bus
+  bus -.->|subscribe| orders
+`,
+  cicd: `flowchart LR
+  dev(["{icon:mdi:account} Developer"]):::client
+  repo["{icon:mdi:git} Git push"]:::service
+
+  subgraph ci["CI · build & verify"]
+    build["{icon:aws:container} Build"]:::compute
+    test["{icon:mdi:test-tube} Test"]:::compute
+    scan["{icon:mdi:shield-check} Security scan"]:::service
+  end
+
+  registry[("{icon:aws:s3} Artifact registry")]:::storage
+
+  subgraph cd["CD · release"]
+    stage["{icon:aws:server} Staging"]:::service
+    prod["{icon:aws:server} Production"]:::highlight
+  end
+
+  dev --> repo
+  repo ==>|trigger| build
+  build --> test
+  test --> scan
+  scan ==>|publish| registry
+  registry ==>|deploy| stage
+  stage -->|approve| prod
+  prod -.->|rollback| stage
+`,
+  eventdriven: `flowchart TB
+  subgraph producers["Producers"]
+    web["{icon:mdi:web} Web app"]:::client
+    iot["{icon:mdi:chip} IoT devices"]:::client
+  end
+
+  bus{{"{icon:aws:queue} EventBridge bus"}}:::queue
+
+  subgraph consumers["Consumers · Lambda"]
+    fn1["{icon:aws:lambda} Process order"]:::highlight
+    fn2["{icon:aws:lambda} Send email"]:::highlight
+    fn3["{icon:aws:lambda} Update analytics"]:::highlight
+  end
+
+  stream["{icon:mdi:chart-line} Kinesis stream"]:::service
+  ddb[("{icon:aws:database} DynamoDB")]:::database
+  warehouse[("{icon:aws:database} Redshift")]:::database
+
+  web ==>|events| bus
+  iot ==>|telemetry| bus
+  bus --> fn1
+  bus --> fn2
+  bus --> fn3
+  fn1 --> ddb
+  fn2 -.-> ddb
+  fn3 ==>|stream| stream
+  stream -.->|load| warehouse
 `,
 };
 
@@ -1000,15 +1108,23 @@ const STARTERS = {
   checkout main
   merge feature
 `,
-  aws: `flowchart LR
-  user["{icon:aws:cdn} CloudFront"]:::client
-  api["{icon:aws:gateway} API Gateway"]
+  aws: `flowchart TB
+  cdn["{icon:aws:cdn} CloudFront"]:::client
+  subgraph vpc["VPC"]
+    alb["{icon:aws:load-balancer} Load Balancer"]:::gateway
+    web["{icon:aws:server} EC2 / ECS"]:::compute
+    db[("{icon:aws:database} RDS · Multi-AZ")]:::database
+  end
+  api["{icon:aws:gateway} API Gateway"]:::gateway
   fn["{icon:aws:lambda} Lambda"]:::highlight
-  db[("{icon:aws:database} DynamoDB")]:::database
+  ddb[("{icon:aws:database} DynamoDB")]:::database
 
-  user --> api
-  api --> fn
-  fn --> db
+  cdn ==>|HTTPS| alb
+  alb --> web
+  web --> db
+  cdn ==>|/api| api
+  api ==>|invoke| fn
+  fn --> ddb
 `,
 };
 
@@ -1130,7 +1246,10 @@ const GALLERY_SEEN_KEY = "layra-gallery-seen";
 
 // Display order + titles/descriptions for the gallery cards.
 const EXAMPLES = [
-  { key: "aws", title: "AWS architecture", desc: "Serverless stack with infra icons" },
+  { key: "aws", title: "AWS 3-tier architecture", desc: "VPC, Multi-AZ, ALB → EC2/ECS → RDS, Lambda → DynamoDB" },
+  { key: "microservices", title: "Microservices", desc: "API gateway, service mesh & event bus" },
+  { key: "eventdriven", title: "Event-driven", desc: "EventBridge fan-out to Lambda consumers" },
+  { key: "cicd", title: "CI/CD pipeline", desc: "Build, test, scan → staged release" },
   { key: "flowchart", title: "Flowchart", desc: "Boxes, arrows & decisions" },
   { key: "sequence", title: "Sequence", desc: "Actors exchanging messages" },
   { key: "state", title: "State machine", desc: "States & transitions" },
@@ -1143,6 +1262,10 @@ const EXAMPLES = [
   { key: "journey", title: "User journey", desc: "Steps with sentiment" },
   { key: "git", title: "Git graph", desc: "Branches, commits & merges" },
 ];
+
+// Examples that show off nested clusters + animated edges + colored icons —
+// flagged so the gallery card gets the "featured" accent treatment.
+const FEATURED_EXAMPLES = new Set(["aws", "microservices", "eventdriven", "cicd"]);
 
 const gallery = $("gallery");
 const galleryGrid = $("gallery-grid");
@@ -1176,7 +1299,7 @@ function buildGallery() {
     card.type = "button";
     card.className = "gallery-card";
     card.dataset.example = ex.key;
-    if (ex.key === "aws") card.classList.add("featured");
+    if (FEATURED_EXAMPLES.has(ex.key)) card.classList.add("featured");
 
     const thumb = document.createElement("div");
     thumb.className = "gallery-thumb";
@@ -1213,6 +1336,13 @@ function loadExample(key) {
   editor.value = src;
   nodeOffsets = new Map();
   userTouchedView = false;
+  // The architecture showcases are designed around data-flow animation: turn
+  // it on automatically so they land with edges marching out of the box.
+  if (FEATURED_EXAMPLES.has(key) && !animateEdges) {
+    animateEdges = true;
+    localStorage.setItem(ANIMATE_KEY, "1");
+    applyAnimateEdges();
+  }
   closeGallery();
   scheduleRender();
   fitToView();

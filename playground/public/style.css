@@ -964,6 +964,26 @@ body.dragging-palette { cursor: grabbing; user-select: none; -webkit-user-select
   grid-column: span 2;
   border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
 }
+.gallery-card.featured .gallery-meta {
+  position: relative;
+  background: linear-gradient(color-mix(in srgb, var(--accent) 7%, var(--panel)), var(--panel));
+}
+/* A small "Showcase" badge marks the rich architecture examples. */
+.gallery-card.featured .gallery-card-title::after {
+  content: "Showcase";
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  vertical-align: middle;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  border-radius: 999px;
+}
 .gallery-thumb {
   height: 132px;
   display: flex;

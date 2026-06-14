@@ -64,6 +64,34 @@ pub enum EdgeKind {
     DiamondOpen,
 }
 
+/// ER crow's-foot endpoint notation. Two independent bits map to the four
+/// Mermaid tokens read outward from the entity:
+///
+/// - `many = false` draws a single bar (one) touching the entity;
+///   `many = true` draws a three-pronged crow's foot (many).
+/// - `optional = false` draws a second bar (mandatory) set back from the
+///   entity; `optional = true` draws a circle (zero allowed).
+///
+/// | token  | meaning        | many  | optional |
+/// |--------|----------------|-------|----------|
+/// | `\|\|` | exactly one    | false | false    |
+/// | `\|o`  | zero or one    | false | true     |
+/// | `}\|`  | one or more    | true  | false    |
+/// | `}o`   | zero or more   | true  | true     |
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct CrowFoot {
+    /// Crow's foot (many) vs single bar (one) at the entity.
+    pub many: bool,
+    /// Circle (zero allowed / optional) vs bar (mandatory) set back from it.
+    pub optional: bool,
+}
+
+impl CrowFoot {
+    pub fn new(many: bool, optional: bool) -> Self {
+        Self { many, optional }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Edge {
     pub source: NodeId,
@@ -79,6 +107,11 @@ pub struct Edge {
     /// `o{`). Rendered near the endpoints, not the middle.
     #[serde(default)]
     pub end_labels: Option<(String, String)>,
+    /// ER crow's-foot notation at the (source, target) endpoints. When set,
+    /// the renderer draws graphical crow's-foot markers (bars / circle /
+    /// three-prong foot) instead of, or alongside, textual cardinality.
+    #[serde(default)]
+    pub crowfoot: Option<(CrowFoot, CrowFoot)>,
     /// Animation hint: when true the renderer draws a flowing dash along the
     /// path (an `<animate>` on `stroke-dashoffset`) to suggest active flow.
     /// Purely cosmetic; never affects layout or routing.
@@ -211,6 +244,7 @@ mod tests {
             points: vec![],
             label_pos: None,
             end_labels: None,
+            crowfoot: None,
             animated: false,
         });
         assert_eq!(g.node_by_name("b"), Some(b));

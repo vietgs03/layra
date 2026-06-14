@@ -24,6 +24,7 @@ fn edge(a: layra_core::NodeId, b: layra_core::NodeId) -> Edge {
         points: vec![],
         label_pos: None,
         end_labels: None,
+        crowfoot: None,
         animated: false,
     }
 }

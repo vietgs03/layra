@@ -328,9 +328,10 @@ fn write_edge(svg: &mut String, edge: &layra_core::Edge, theme: &Theme) {
         );
     }
 
-    // Endpoint labels (ER cardinality / UML multiplicities): small text
-    // offset a fixed distance along the first/last segment.
-    if let Some((src_label, dst_label)) = &edge.end_labels {
+    // Endpoint labels (UML multiplicities like `1`, `*`): small text offset
+    // along the first/last segment. ER diagrams instead get graphical
+    // crow's-foot markers (below), so suppress the redundant text there.
+    if let (Some((src_label, dst_label)), None) = (&edge.end_labels, &edge.crowfoot) {
         let place = |out: &mut String, a: layra_core::Point, b: layra_core::Point, text: &str| {
             if text.is_empty() {
                 return;
@@ -351,6 +352,14 @@ fn write_edge(svg: &mut String, edge: &layra_core::Edge, theme: &Theme) {
         place(svg, pts[pts.len() - 1], pts[pts.len() - 2], dst_label);
     }
 
+    // ER crow's-foot markers: graphical bars / circle / three-prong foot at
+    // each endpoint, oriented along the first/last segment toward the entity.
+    if let Some((src_foot, dst_foot)) = &edge.crowfoot {
+        let pts = &edge.points;
+        write_crowfoot(svg, pts[0], pts[1], src_foot, theme);
+        write_crowfoot(svg, pts[pts.len() - 1], pts[pts.len() - 2], dst_foot, theme);
+    }
+
     if let (Some(label), Some(pos)) = (&edge.label, edge.label_pos) {
         // Size the label chip to the measured text (not byte length) so the
         // background pill always fully covers the glyphs, plus a little
@@ -366,6 +375,76 @@ fn write_edge(svg: &mut String, edge: &layra_core::Edge, theme: &Theme) {
             pos.y,
             theme.edge_label,
             escape(label)
+        );
+    }
+}
+
+/// Draw an ER crow's-foot marker at endpoint `a` (on the entity), oriented
+/// along the segment a→b (pointing into the diagram). The notation, reading
+/// outward from the entity:
+/// - mandatory-one  (`||`): two bars across the line;
+/// - zero-or-one    (`|o`): one bar + a circle further out;
+/// - one-or-more    (`}|`): a three-prong foot + one bar behind it;
+/// - zero-or-more   (`}o`): a three-prong foot + a circle behind it.
+fn write_crowfoot(
+    svg: &mut String,
+    a: layra_core::Point,
+    b: layra_core::Point,
+    foot: &layra_core::CrowFoot,
+    theme: &Theme,
+) {
+    // Unit vector a→b (along the line) and its perpendicular.
+    let dx = b.x - a.x;
+    let dy = b.y - a.y;
+    let len = (dx * dx + dy * dy).sqrt().max(0.001);
+    let (ux, uy) = (dx / len, dy / len); // toward interior
+    let (px, py) = (-uy, ux); // perpendicular
+
+    const FOOT: f32 = 11.0; // crow's-foot depth / bar half-width
+    const BAR1: f32 = 9.0; // first bar distance from entity
+    const BAR2: f32 = 16.0; // second bar distance
+    const CIRCLE_D: f32 = 18.0; // circle center distance
+    let stroke = theme.edge;
+
+    // Point `d` units along the line from `a`, offset `s` perpendicular.
+    let at = |d: f32, s: f32| (a.x + ux * d + px * s, a.y + uy * d + py * s);
+
+    if foot.many {
+        // Three-prong foot: lines from a point on the line out to the entity
+        // edge spread, forming the "crow's foot".
+        let (tipx, tipy) = at(FOOT, 0.0); // apex inward
+        for s in [-FOOT * 0.6, 0.0, FOOT * 0.6] {
+            let (ex, ey) = at(0.0, s);
+            let _ = write!(
+                svg,
+                r#"<line x1="{tipx:.1}" y1="{tipy:.1}" x2="{ex:.1}" y2="{ey:.1}" stroke="{stroke}" stroke-width="1.4"/>"#
+            );
+        }
+    } else {
+        // Single bar (one) right at the entity edge.
+        let (b1x, b1y) = at(BAR1, FOOT * 0.55);
+        let (b2x, b2y) = at(BAR1, -FOOT * 0.55);
+        let _ = write!(
+            svg,
+            r#"<line x1="{b1x:.1}" y1="{b1y:.1}" x2="{b2x:.1}" y2="{b2y:.1}" stroke="{stroke}" stroke-width="1.4"/>"#
+        );
+    }
+
+    if foot.optional {
+        // Circle (zero allowed) set back from the entity.
+        let (cx, cy) = at(CIRCLE_D, 0.0);
+        let _ = write!(
+            svg,
+            r#"<circle cx="{cx:.1}" cy="{cy:.1}" r="4.2" fill="{}" stroke="{stroke}" stroke-width="1.4"/>"#,
+            theme.background
+        );
+    } else {
+        // Mandatory bar set back from the entity (the "one" tick).
+        let (b1x, b1y) = at(BAR2, FOOT * 0.55);
+        let (b2x, b2y) = at(BAR2, -FOOT * 0.55);
+        let _ = write!(
+            svg,
+            r#"<line x1="{b1x:.1}" y1="{b1y:.1}" x2="{b2x:.1}" y2="{b2y:.1}" stroke="{stroke}" stroke-width="1.4"/>"#
         );
     }
 }
@@ -668,5 +747,67 @@ mod tests {
             svg.contains(r##"stroke="#D13212""##),
             "an iam (security) container is AWS red"
         );
+    }
+
+    // ---- L16: ER crow's-foot notation ----
+
+    fn render_er(src: &str) -> String {
+        use layra_core::Document;
+        let (doc, warnings) = layra_parser::parse_document_lenient(src);
+        assert!(warnings.is_empty(), "warnings: {warnings:?}");
+        let Document::Graph(mut g) = doc else {
+            panic!("ER diagram should parse to a graph");
+        };
+        layra_text::measure_graph(&mut g, &layra_text::TextOptions::default());
+        layra_layout::layout(&mut g, &layra_layout::LayoutOptions::default());
+        layra_router::route(&mut g);
+        render(&g, &Theme::light())
+    }
+
+    #[test]
+    fn er_crowfoot_renders_graphical_markers_not_text() {
+        // CUSTOMER ||--o{ ORDER: the ORDER side is zero-or-many (crow's foot
+        // + circle), the CUSTOMER side is exactly-one (two bars). The render
+        // must draw geometry, not textual "1" / "0..*".
+        let svg = render_er("erDiagram\n  CUSTOMER ||--o{ ORDER : places");
+        // Zero-or-many side draws a circle (optional marker).
+        assert!(
+            svg.contains("<circle"),
+            "zero-or-many endpoint draws an optional circle"
+        );
+        // Crow's-foot / bar marker lines use stroke-width 1.4.
+        assert!(
+            svg.matches(r#"stroke-width="1.4""#).count() >= 5,
+            "crow's-foot + bar marker lines present"
+        );
+        // Textual cardinality is suppressed for ER (replaced by geometry).
+        assert!(
+            !svg.contains(">0..*</text>") && !svg.contains(">1</text>"),
+            "ER textual cardinality suppressed in favour of crow's-foot"
+        );
+    }
+
+    #[test]
+    fn er_exactly_one_draws_two_bars_no_circle() {
+        // A--||--||--B with both ends exactly-one: no circles anywhere.
+        let svg = render_er("erDiagram\n  A ||--|| B : has");
+        assert!(
+            !svg.contains("<circle"),
+            "exactly-one on both ends has no optional circles"
+        );
+        // Two bars per end = at least 4 marker lines.
+        assert!(
+            svg.matches(r#"stroke-width="1.4""#).count() >= 4,
+            "two bars per endpoint"
+        );
+    }
+
+    #[test]
+    fn er_attribute_box_keeps_pk_fk_markers() {
+        let svg = render_er(
+            "erDiagram\n  ORDER {\n    int id PK\n    int customer_id FK\n    string status\n  }\n  CUSTOMER ||--o{ ORDER : places",
+        );
+        assert!(svg.contains("[PK]"), "primary key marker rendered");
+        assert!(svg.contains("[FK]"), "foreign key marker rendered");
     }
 }

@@ -60,6 +60,7 @@ pub(crate) fn parse_lenient(lines: &[(usize, &str)], raw: &str) -> (Graph, Vec<P
                 points: vec![],
                 label_pos: None,
                 end_labels: None,
+                crowfoot: None,
                 animated: false,
             });
         }

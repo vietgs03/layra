@@ -291,6 +291,7 @@ impl<'a> Parser<'a> {
                             points: vec![],
                             label_pos: None,
                             end_labels: None,
+                            crowfoot: None,
                             animated: op.animated,
                         });
                     }

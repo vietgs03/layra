@@ -420,39 +420,65 @@ main { display: flex; flex: 1; min-height: 0; }
   transition: border-color 0.1s, background 0.1s, transform 0.06s;
 }
 .palette-item:hover {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 8%, var(--bg));
+  border-color: var(--pi, var(--accent));
+  background: color-mix(in srgb, var(--pi, var(--accent)) 8%, var(--bg));
 }
 .palette-item:active { transform: translateY(1px); }
-.palette-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.palette-item:focus-visible { outline: 2px solid var(--pi, var(--accent)); outline-offset: 1px; }
 .pi-glyph {
   flex: none;
   width: 18px;
   text-align: center;
   font-size: 15px;
-  color: var(--accent);
+  color: var(--pi, var(--accent));
 }
+/* Per-shape glyph hues — match the engine's role colors so the palette is a
+   legend, not grey monotony. */
+.palette-item[data-snip="rect"]     { --pi: #3b82f6; }
+.palette-item[data-snip="rounded"]  { --pi: #3b82f6; }
+.palette-item[data-snip="stadium"]  { --pi: #10b981; }
+.palette-item[data-snip="decision"] { --pi: #06b6d4; }
+.palette-item[data-snip="database"] { --pi: #8b5cf6; }
+.palette-item[data-snip="queue"]    { --pi: #f59e0b; }
+.palette-item[data-snip="circle"]   { --pi: #ec4899; }
+.palette-item[data-snip="subgraph"] { --pi: #64748b; }
+.palette-item[data-snip="arrow"]    { --pi: #6b7280; }
+.palette-item[data-snip="labeled"]  { --pi: #3b82f6; }
+.palette-item[data-snip="dashed"]   { --pi: #8b5cf6; }
+.palette-item[data-snip="thick"]    { --pi: #ef4444; }
 .pi-label { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* Infra icon grid: clickable tiles, each showing the real inline SVG glyph. */
 .palette-infra { display: flex; flex-direction: column; }
-/* Sub-category header inside the Infra group (Compute, Storage, …). */
+/* Sub-category header inside the Infra group (Compute, Storage, …): a colored
+   dot + label so each category reads at a glance. `--cat` is set per header. */
 .palette-cat-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 9.5px;
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: var(--dim);
-  opacity: 0.85;
-  padding: 8px 2px 5px;
+  color: var(--cat, var(--dim));
+  padding: 9px 2px 5px;
 }
 .palette-cat-title:first-child { padding-top: 2px; }
+.palette-cat-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: var(--cat, var(--dim));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--cat, var(--dim)) 22%, transparent);
+}
 .palette-icon-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 5px;
 }
 .palette-icon {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -461,25 +487,29 @@ main { display: flex; flex: 1; min-height: 0; }
   padding: 8px 4px 6px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: var(--bg);
-  color: var(--text);
+  /* A whisper of the category color in the tile background. */
+  background:
+    linear-gradient(color-mix(in srgb, var(--cat, var(--accent)) 5%, var(--bg)),
+                    color-mix(in srgb, var(--cat, var(--accent)) 5%, var(--bg)));
+  color: var(--cat, var(--accent));
   cursor: pointer;
   font: inherit;
-  transition: border-color 0.1s, background 0.1s, transform 0.06s;
+  transition: border-color 0.1s, background 0.1s, transform 0.06s, box-shadow 0.1s;
 }
 .palette-icon:hover {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 9%, var(--bg));
+  border-color: var(--cat, var(--accent));
+  background: color-mix(in srgb, var(--cat, var(--accent)) 13%, var(--bg));
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--cat, var(--accent)) 22%, transparent);
 }
 .palette-icon:active { transform: translateY(1px); }
-.palette-icon:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.palette-icon:focus-visible { outline: 2px solid var(--cat, var(--accent)); outline-offset: 1px; }
 .pi-icon {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 26px;
   height: 26px;
-  color: var(--accent);
+  color: var(--cat, var(--accent));
 }
 .pi-icon svg { display: block; width: 22px; height: 22px; }
 .pi-name {
@@ -493,6 +523,54 @@ main { display: flex; flex: 1; min-height: 0; }
   max-width: 100%;
 }
 .palette-icon:hover .pi-name { color: var(--text); }
+
+/* Larger hover preview: a popover to the right of the tile with a big glyph. */
+.pi-preview {
+  position: absolute;
+  left: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%) scale(0.9);
+  transform-origin: left center;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 96px;
+  padding: 12px 10px 10px;
+  border: 1px solid color-mix(in srgb, var(--cat, var(--accent)) 45%, var(--border));
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.28);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+.palette-icon:hover .pi-preview,
+.palette-icon:focus-visible .pi-preview {
+  opacity: 1;
+  transform: translateY(-50%) scale(1);
+}
+.pi-preview-glyph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  color: var(--cat, var(--accent));
+  background: color-mix(in srgb, var(--cat, var(--accent)) 12%, var(--bg));
+  border-radius: 12px;
+}
+.pi-preview-glyph svg { display: block; width: 44px; height: 44px; }
+.pi-preview-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  text-align: center;
+  line-height: 1.15;
+}
+/* The narrow collapsed palette has no room for the popover. */
+.palette.collapsed .pi-preview { display: none; }
 
 #splitter {
   flex: none;
@@ -885,6 +963,26 @@ body.dragging-palette { cursor: grabbing; user-select: none; -webkit-user-select
 .gallery-card.featured {
   grid-column: span 2;
   border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+}
+.gallery-card.featured .gallery-meta {
+  position: relative;
+  background: linear-gradient(color-mix(in srgb, var(--accent) 7%, var(--panel)), var(--panel));
+}
+/* A small "Showcase" badge marks the rich architecture examples. */
+.gallery-card.featured .gallery-card-title::after {
+  content: "Showcase";
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  vertical-align: middle;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  border-radius: 999px;
 }
 .gallery-thumb {
   height: 132px;

@@ -13,6 +13,9 @@ layra-icons = { workspace = true }
 layra-text = { workspace = true }
 
 [dev-dependencies]
-# Integration tests build IR straight from Mermaid source; the parser only
-# depends on layra-core, so this dev-dep stays acyclic.
+# Integration tests build IR straight from Mermaid source and run it through
+# the real measure/layout/route pipeline. These crates depend only on
+# layra-core (and layra-text), so the dev-deps stay acyclic.
 layra-parser = { workspace = true }
+layra-layout = { workspace = true }
+layra-router = { workspace = true }

@@ -22,7 +22,9 @@ pub use charts::{
     PieChart, TaskStatus, Timeline, TimelinePeriod,
 };
 pub use geometry::{Point, Rect, Size};
-pub use graph::{Direction, Edge, EdgeId, EdgeKind, Graph, Node, NodeId, Subgraph, SubgraphId};
+pub use graph::{
+    CrowFoot, Direction, Edge, EdgeId, EdgeKind, Graph, Node, NodeId, Subgraph, SubgraphId,
+};
 pub use sequence::{
     FrameKind, NotePosition, Participant, ParticipantId, SeqArrow, SeqItem, SeqMessage, SeqNote,
     SequenceDiagram,

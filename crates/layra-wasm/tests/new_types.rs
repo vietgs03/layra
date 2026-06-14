@@ -40,8 +40,22 @@ fn er_diagram_end_to_end() {
     .unwrap();
     assert!(svg.contains("CUSTOMER"));
     assert!(svg.contains("id: int  [PK]"));
-    assert!(svg.contains("0..*"), "crow's-foot cardinality label");
-    assert!(svg.contains("1..*"));
+    // L16: ER cardinality now renders as graphical crow's-foot notation
+    // (bars / circle / three-prong foot), not textual "0..*" / "1..*".
+    // The zero-or-many (`o{`) end draws an optional circle; both ends draw
+    // crow's-foot / bar marker lines at stroke-width 1.4.
+    assert!(
+        svg.contains("<circle"),
+        "zero-or-many endpoint draws an optional circle"
+    );
+    assert!(
+        svg.matches(r#"stroke-width="1.4""#).count() >= 6,
+        "crow's-foot + bar marker lines across both relationships"
+    );
+    assert!(
+        !svg.contains(">0..*</text>") && !svg.contains(">1..*</text>"),
+        "ER textual cardinality replaced by crow's-foot geometry"
+    );
 }
 
 #[test]

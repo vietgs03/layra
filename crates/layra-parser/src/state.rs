@@ -135,6 +135,7 @@ impl StateParser {
                 points: vec![],
                 label_pos: None,
                 end_labels: None,
+                crowfoot: None,
                 animated: false,
             });
             return Ok(());

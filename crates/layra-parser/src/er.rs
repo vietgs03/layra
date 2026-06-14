@@ -18,7 +18,7 @@
 
 use crate::ParseError;
 use layra_core::{
-    ComponentRole, Direction, Edge, EdgeKind, EdgeStyle, Graph, Node, NodeId, NodeShape,
+    ComponentRole, CrowFoot, Direction, Edge, EdgeKind, EdgeStyle, Graph, Node, NodeId, NodeShape,
 };
 use std::collections::HashMap;
 
@@ -109,8 +109,8 @@ impl ErParser {
         let (lhs_name, lcard_tok) = left_part.split_at(left_part.len().saturating_sub(2));
         let (rcard_tok, rest) = after_body.split_at(2.min(after_body.len()));
 
-        let lcard = cardinality_label(lcard_tok, true)?;
-        let rcard = cardinality_label(rcard_tok, false)?;
+        let lcard = cardinality(lcard_tok, true)?;
+        let rcard = cardinality(rcard_tok, false)?;
 
         let (rhs_name, label) = match rest.split_once(':') {
             Some((r, l)) => (r.trim(), Some(l.trim().trim_matches('"').to_string())),
@@ -131,7 +131,8 @@ impl ErParser {
             kind: EdgeKind::Open,
             points: vec![],
             label_pos: None,
-            end_labels: Some((lcard, rcard)),
+            end_labels: Some((lcard.0, rcard.0)),
+            crowfoot: Some((lcard.1, rcard.1)),
             animated: false,
         });
         Some(())
@@ -150,10 +151,12 @@ impl ErParser {
     }
 }
 
-/// Map a crow's-foot token to a compact cardinality label.
-/// `left` controls reading direction (`}o--` mirrors `--o{`); braces are
-/// folded so both `{` and `}` mean "many".
-fn cardinality_label(tok: &str, left: bool) -> Option<String> {
+/// Map a crow's-foot token to a compact label plus the structured
+/// [`CrowFoot`] the renderer draws. `left` controls reading direction
+/// (`}o--` mirrors `--o{`); braces are folded so both `{` and `}` mean
+/// "many". Reading the token outward from the entity:
+/// - `|` (bar) = one, `o` = optional/zero, `{`/`}` = many.
+fn cardinality(tok: &str, left: bool) -> Option<(String, CrowFoot)> {
     let oriented: String = if left {
         tok.chars().rev().collect()
     } else {
@@ -163,16 +166,14 @@ fn cardinality_label(tok: &str, left: bool) -> Option<String> {
         .chars()
         .map(|c| if c == '}' { '{' } else { c })
         .collect();
-    Some(
-        match normalized.as_str() {
-            "||" => "1",
-            "o|" | "|o" => "0..1",
-            "|{" | "{|" => "1..*",
-            "o{" | "{o" => "0..*",
-            _ => return None,
-        }
-        .to_string(),
-    )
+    let (label, foot) = match normalized.as_str() {
+        "||" => ("1", CrowFoot::new(false, false)),
+        "o|" | "|o" => ("0..1", CrowFoot::new(false, true)),
+        "|{" | "{|" => ("1..*", CrowFoot::new(true, false)),
+        "o{" | "{o" => ("0..*", CrowFoot::new(true, true)),
+        _ => return None,
+    };
+    Some((label.to_string(), foot))
 }
 
 /// `int id PK` → `id: int  [PK]` — type-second display, keys highlighted.
@@ -219,6 +220,21 @@ mod tests {
         let e = &g.edges[0];
         assert_eq!(e.label.as_deref(), Some("places"));
         assert_eq!(e.end_labels, Some(("1".into(), "0..*".into())));
+        // Structured crow's-foot: CUSTOMER side is exactly-one (one bar, no
+        // circle), ORDER side is zero-or-many (foot + circle).
+        let (lf, rf) = e.crowfoot.expect("crowfoot present");
+        assert_eq!(lf, CrowFoot::new(false, false), "|| = exactly one");
+        assert_eq!(rf, CrowFoot::new(true, true), "o{{ = zero or many");
+    }
+
+    #[test]
+    fn all_four_crowfoot_tokens_map_correctly() {
+        // one-or-more, zero-or-one on each side.
+        let g = parse_src("A |o--|{ B : r");
+        let (lf, rf) = g.edges[0].crowfoot.unwrap();
+        assert_eq!(lf, CrowFoot::new(false, true), "|o = zero or one");
+        assert_eq!(rf, CrowFoot::new(true, false), "|{{ = one or more");
+        assert_eq!(g.edges[0].end_labels, Some(("0..1".into(), "1..*".into())));
     }
 
     #[test]

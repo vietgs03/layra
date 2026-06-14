@@ -2418,20 +2418,77 @@ function themedSvg(svgText) {
   return new XMLSerializer().serializeToString(svg);
 }
 
-// Rasterize the current SVG to a canvas at the given scale, then hand the
-// resulting blob to `onBlob`. Shared by PNG download and clipboard copy.
-function rasterizePng(scale, onBlob) {
-  if (!lastGoodSvg) return;
-  const svgEl = preview.querySelector("svg");
-  if (!svgEl) return;
-  const w = Math.max(1, Math.round(svgEl.viewBox.baseVal.width * scale));
-  const h = Math.max(1, Math.round(svgEl.viewBox.baseVal.height * scale));
-  let svgText = themedSvg(lastGoodSvg);
-  if (!/<svg[^>]*\swidth=/.test(svgText)) {
-    svgText = svgText.replace("<svg", `<svg width="${w / scale}" height="${h / scale}"`);
+// Build a self-contained, themed SVG string covering the WHOLE diagram —
+// including any nodes the user dragged outside the original layout bounds and
+// regardless of the current pan/zoom. We snapshot the LIVE DOM (which carries
+// the applied drag transforms), measure the true content bounding box with
+// getBBox(), and stamp that as the viewBox so nothing is clipped. Returns
+// { svgText, w, h } at scale 1, or null when there's nothing to export.
+function fullDiagramSvg() {
+  if (!lastGoodSvg) return null;
+  const live = preview.querySelector("svg");
+  if (!live) return null;
+
+  // Measure the union of all rendered geometry in the live (offset-applied)
+  // tree. getBBox ignores pan/zoom (those live on a wrapper transform), so this
+  // is the diagram's intrinsic extent — exactly the "full-bleed" region.
+  let box;
+  try { box = live.getBBox(); } catch { box = null; }
+  const vb = live.viewBox.baseVal;
+  // Union with the declared viewBox so the full-bleed background rect is kept.
+  let minX = vb.x, minY = vb.y, maxX = vb.x + vb.width, maxY = vb.y + vb.height;
+  if (box && box.width > 0 && box.height > 0) {
+    minX = Math.min(minX, box.x); minY = Math.min(minY, box.y);
+    maxX = Math.max(maxX, box.x + box.width); maxY = Math.max(maxY, box.y + box.height);
   }
+  const pad = 12;
+  minX -= pad; minY -= pad; maxX += pad; maxY += pad;
+  const w = Math.max(1, Math.round(maxX - minX));
+  const h = Math.max(1, Math.round(maxY - minY));
+
+  // Clone the live tree (so drag offsets are included), bake the theme, and
+  // rewrite the viewBox/size to the measured full extent.
+  const doc = svgParser.parseFromString(new XMLSerializer().serializeToString(live), "image/svg+xml");
+  const svg = doc.documentElement;
+  if (svg.nodeName !== "svg") return null;
+  // Strip transient editor-only state that shouldn't bake into the export.
+  svg.removeAttribute("style");
+  for (const el of svg.querySelectorAll("[style*='opacity']")) el.style.opacity = "";
+  // Repaint the background rect (matched against the ORIGINAL viewBox) then
+  // grow it to cover the expanded full-bleed box.
+  const t = resolveTheme();
+  svg.setAttribute("font-family", t.font);
+  svg.setAttribute("data-layra-theme",
+    JSON.stringify({ id: t.id, base: t.base, accent: t.accent, font: t.fontKey, bg: t.bg }));
+  for (const rect of svg.querySelectorAll("rect")) {
+    const rw = parseFloat(rect.getAttribute("width"));
+    const rh = parseFloat(rect.getAttribute("height"));
+    if (Math.abs(rw - vb.width) < 1.5 && Math.abs(rh - vb.height) < 1.5) {
+      rect.setAttribute("x", String(minX));
+      rect.setAttribute("y", String(minY));
+      rect.setAttribute("width", String(w));
+      rect.setAttribute("height", String(h));
+      rect.setAttribute("fill", t.bg);
+      break;
+    }
+  }
+  svg.setAttribute("viewBox", `${minX} ${minY} ${w} ${h}`);
+  svg.setAttribute("width", String(w));
+  svg.setAttribute("height", String(h));
+  return { svgText: new XMLSerializer().serializeToString(svg), w, h };
+}
+
+// Rasterize the FULL diagram to a canvas at the given scale, then hand the
+// resulting blob to `onBlob`. Shared by PNG download and clipboard copy.
+// Captures content outside the current viewport (full-bleed), not just the
+// visible pan/zoom region.
+function rasterizePng(scale, onBlob) {
+  const full = fullDiagramSvg();
+  if (!full) return;
+  const w = Math.max(1, Math.round(full.w * scale));
+  const h = Math.max(1, Math.round(full.h * scale));
   const img = new Image();
-  const url = URL.createObjectURL(new Blob([svgText], { type: "image/svg+xml" }));
+  const url = URL.createObjectURL(new Blob([full.svgText], { type: "image/svg+xml" }));
   img.onerror = () => {
     URL.revokeObjectURL(url);
     reportError("PNG export failed: SVG did not rasterize");
@@ -2504,6 +2561,7 @@ function setupExportMenu() {
       case "svg": exportSvg(); break;
       case "png-1": exportPng(1); break;
       case "png-2": exportPng(2); break;
+      case "png-3": exportPng(3); break;
       case "png-4": exportPng(4); break;
       case "copy-png": copyPngToClipboard(2); break;
     }
@@ -2612,6 +2670,7 @@ const COMMANDS = [
   { id: "export-svg", title: "Export SVG", icon: "▤", run: () => exportSvg() },
   { id: "export-png-1", title: "Export PNG · 1×", icon: "▤", run: () => exportPng(1) },
   { id: "export-png-2", title: "Export PNG · 2×", icon: "▤", run: () => exportPng(2) },
+  { id: "export-png-3", title: "Export PNG · 3×", icon: "▤", run: () => exportPng(3) },
   { id: "export-png-4", title: "Export PNG · 4×", icon: "▤", run: () => exportPng(4) },
   { id: "copy-png", title: "Copy PNG to clipboard", icon: "⧉", run: () => copyPngToClipboard(2) },
   { id: "toggle-theme", title: "Toggle dark mode", hint: "D", icon: "◐", run: () => toggleTheme() },
@@ -2865,6 +2924,13 @@ async function main() {
       applyLineEdit(d.line, fixes[0].apply());
       return true;
     },
+  };
+  // Test hook for U22 export: measure the full-diagram (full-bleed) SVG and
+  // rasterize to a PNG blob at a given scale without a download click.
+  window.__layraExport = {
+    fullSvg: () => fullDiagramSvg(),
+    pngBlob: (scale = 2) =>
+      new Promise((resolve) => rasterizePng(scale, (blob) => resolve(blob))),
   };
 
   // Keyboard: Tab/Shift+Tab indent in editor, Escape blurs;

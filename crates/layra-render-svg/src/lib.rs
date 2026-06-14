@@ -276,7 +276,24 @@ fn write_node(
     theme: &Theme,
     icons: Option<&IconRegistry>,
 ) {
-    let role_color = theme.role_color(node.role);
+    let c = node.rect.center();
+    let icon_key = node
+        .icon
+        .as_deref()
+        .filter(|key| icons.is_some_and(|reg| reg.get(key).is_some()));
+
+    // L10: service-category node theming. When the author hasn't set an
+    // explicit `:::role` (role stays Generic), derive the accent from the
+    // icon's AWS category so an `{icon:aws:lambda}` node reads orange
+    // automatically. An explicit role always wins.
+    let icon_color = if node.role == layra_core::ComponentRole::Generic {
+        icon_key
+            .and_then(|key| icons.and_then(|reg| reg.category(key)))
+            .map(|cat| cat.color())
+    } else {
+        None
+    };
+    let role_color = icon_color.unwrap_or_else(|| theme.role_color(node.role));
     shapes::write_shape(svg, node, role_color, theme);
 
     // Compartmented node (UML class / ER entity): title strip + sections.
@@ -284,12 +301,6 @@ fn write_node(
         write_compartments(svg, node, theme);
         return;
     }
-
-    let c = node.rect.center();
-    let icon_key = node
-        .icon
-        .as_deref()
-        .filter(|key| icons.is_some_and(|reg| reg.get(key).is_some()));
 
     let lines: Vec<&str> = node.label.split('\n').collect();
     let line_h = 18.0;
@@ -413,5 +424,70 @@ mod tests {
         assert!(svg.contains("&amp;"));
         assert!(svg.contains("&lt;World&gt;"));
         assert!(!svg.contains("<World>"));
+    }
+
+    // ---- L10: service-category node theming ----
+
+    fn render_node_with_icon(icon: &str, role: layra_core::ComponentRole) -> String {
+        let reg = IconRegistry::with_builtins();
+        let mut g = Graph::new(Direction::TopBottom);
+        let mut n = Node::new("a", "Svc");
+        n.icon = Some(icon.to_string());
+        n.role = role;
+        n.rect = Rect::new(10.0, 10.0, 120.0, 64.0);
+        g.add_node(n);
+        render_with_icons(&g, &Theme::light(), Some(&reg))
+    }
+
+    #[test]
+    fn icon_node_auto_accents_from_category() {
+        // A plain (Generic) node carrying a compute icon picks up the AWS
+        // orange accent on its border — no explicit :::role needed.
+        let svg = render_node_with_icon("aws:lambda", layra_core::ComponentRole::Generic);
+        assert!(
+            svg.contains(r##"stroke="#ED7100""##),
+            "compute icon must drive an orange border, got: {svg}"
+        );
+        // Default generic grey must not be the border anymore.
+        assert!(
+            !svg.contains(r##"stroke="#94a3b8""##),
+            "generic grey border should be overridden by category"
+        );
+    }
+
+    #[test]
+    fn storage_icon_node_accents_green() {
+        let svg = render_node_with_icon("aws:s3", layra_core::ComponentRole::Generic);
+        assert!(
+            svg.contains(r##"stroke="#7AA116""##),
+            "storage icon must drive a green border"
+        );
+    }
+
+    #[test]
+    fn explicit_role_overrides_icon_category() {
+        // If the author sets :::database, that wins over the icon category.
+        let svg = render_node_with_icon("aws:lambda", layra_core::ComponentRole::Database);
+        assert!(
+            svg.contains(r##"stroke="#8b5cf6""##),
+            "explicit database role must win over compute icon"
+        );
+        assert!(
+            !svg.contains(r##"stroke="#ED7100""##),
+            "icon category must not override an explicit role"
+        );
+    }
+
+    #[test]
+    fn iconless_generic_node_keeps_role_color() {
+        let mut g = Graph::new(Direction::TopBottom);
+        let mut n = Node::new("a", "Plain");
+        n.rect = Rect::new(10.0, 10.0, 120.0, 40.0);
+        g.add_node(n);
+        let svg = render(&g, &Theme::light());
+        assert!(
+            svg.contains(r##"stroke="#94a3b8""##),
+            "iconless generic node keeps neutral grey"
+        );
     }
 }

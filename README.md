@@ -10,6 +10,22 @@ Rust, compiled to WASM for the browser.
 parse → measure text → layout → route edges → render SVG
 ```
 
+## New in v0.4.0
+
+"Beautiful by default" — full-color AWS-architecture diagrams:
+
+- **Colored icons** in real AWS category palette (compute orange, storage
+  green, database blue, network purple, security red, messaging pink)
+- **Auto node theming** — nodes pick an accent from their icon's category
+- **106 cloud/infra icons** (`{icon:aws:lambda}`, `{icon:aws:dynamodb}`, …)
+- **AWS group containers** (VPC / Availability Zone / Region styled subgraphs)
+- **Playground**: real drag-to-canvas (ghost + drop indicator + toast),
+  colored palette, full architecture showcase examples, visual polish
+- Plus everything from v0.3.0 (orthogonal routing, animated edges, minimap,
+  command palette, share links, MCP tools)
+
+[Try the playground →](https://vietgs03.github.io/layra/)
+
 ## New in v0.3.0
 
 AWS-architecture-grade engine + a draw.io-class playground:

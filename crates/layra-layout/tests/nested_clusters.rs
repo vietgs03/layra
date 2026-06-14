@@ -97,3 +97,51 @@ fn two_level_nested_clusters_are_enclosed() {
         );
     }
 }
+
+/// A nested cluster's top edge must clear its parent's top by more than a
+/// header bar's height, or the child's corner/title header overlaps the
+/// parent's header and the label gets clipped (the AWS VPC/AZ bug).
+#[test]
+fn nested_cluster_header_does_not_overlap_parent_header() {
+    const HEADER_H: f32 = 26.0; // AWS corner header bar height
+
+    let mut g = Graph::new(Direction::TopBottom);
+    let hub = node(&mut g, "hub");
+    let a = node(&mut g, "a");
+    let b = node(&mut g, "b");
+    link(&mut g, hub, a);
+    link(&mut g, a, b);
+
+    let inner = g.add_subgraph(Subgraph {
+        name: "az".into(),
+        label: "Availability Zone A".into(),
+        nodes: vec![a, b],
+        parent: None,
+        icon: None,
+        rect: Default::default(),
+    });
+    let outer = g.add_subgraph(Subgraph {
+        name: "vpc".into(),
+        label: "VPC 10.0.0.0/16".into(),
+        nodes: vec![hub],
+        parent: None,
+        icon: None,
+        rect: Default::default(),
+    });
+    g.subgraphs[inner.index()].parent = Some(outer);
+    g.nodes[hub.index()].parent = Some(outer);
+    g.nodes[a.index()].parent = Some(inner);
+    g.nodes[b.index()].parent = Some(inner);
+
+    let opts = layra_layout::LayoutOptions::default();
+    layra_layout::layout(&mut g, &opts);
+
+    let outer_rect = g.subgraphs[outer.index()].rect;
+    let inner_rect = g.subgraphs[inner.index()].rect;
+    let top_gap = inner_rect.y - outer_rect.y;
+    assert!(
+        top_gap >= HEADER_H,
+        "nested cluster top gap {top_gap:.1} < header height {HEADER_H} — \
+         child header would overlap/clip the parent header"
+    );
+}

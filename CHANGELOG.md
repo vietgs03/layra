@@ -1,5 +1,40 @@
 # Changelog
 
+## v0.4.0 — "Beautiful by default"
+
+A visual overhaul addressing real user feedback on v0.3.0 (monochrome
+icons, identical grey nodes, drag with no feedback, weak examples).
+
+### Engine
+- **Colored icon system**: icons render in their real AWS category colors
+  (compute=orange, storage=green, database=blue, network=purple,
+  security=red, messaging=pink) instead of forced grey `currentColor`
+- **Service-category node theming**: a node carrying an icon auto-picks an
+  accent border from the icon's category; iconless nodes stay neutral,
+  explicit `:::role` still wins
+- **106 bundled cloud/infra icons** (up from 47): ec2, fargate, eks, rds,
+  dynamodb, sns, sqs, apigw, route53, cloudwatch, iam, kms, cognito,
+  stepfunctions, eventbridge, kinesis, redshift, athena, glue, sagemaker,
+  ecs, elb, nat, igw and more — each a recognizable glyph with category color
+- **AWS group containers**: subgraphs styled like VPC / Availability Zone /
+  Region (colored dashed border, corner label)
+
+### Playground
+- **Real drag-to-canvas**: pointer-based drag from the palette with a ghost
+  preview, drop indicator, node insertion, and confirmation toast — fixes
+  the "can't drag" feel; covered by a committed Playwright regression test
+- **Colored palette**: category hues, tinted infra tiles, colored shape
+  glyphs, larger hover preview
+- **Architecture showcase examples**: a full serverless 3-tier (VPC,
+  Multi-AZ, ALB → EC2/ECS → RDS, Lambda → DynamoDB, SQS→SNS, CloudFront,
+  Route53), plus microservices, event-driven, and CI/CD — all with nested
+  clusters, animated edges, and colored icons
+- **Visual polish**: node shadows, smooth rounded edges, refined dark theme
+
+### Engineering
+- Test-first throughout; 35 test suites green, blog corpus 25/25, zero
+  clippy warnings, versions CI-synced; new committed drag regression test
+
 ## v0.3.0
 
 A major capability + polish release: AWS-architecture-grade engine and a

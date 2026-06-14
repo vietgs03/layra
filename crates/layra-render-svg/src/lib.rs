@@ -169,8 +169,12 @@ fn write_aws_subgraph(
         r.x, r.y, r.width, r.height
     );
 
-    // Corner header bar (solid category color) hugging the top-left.
-    let header_w = (sg.label.len() as f32 * 7.2 + ICON + PAD * 3.0).min(r.width);
+    // Corner header bar (solid category color) hugging the top-left. The
+    // label must never clip: size the bar to the full label and only cap at
+    // the diagram-reasonable max, not the (possibly narrow) cluster width.
+    let label_px = sg.label.chars().count() as f32 * 7.2;
+    let natural_w = label_px + ICON + PAD * 3.0;
+    let header_w = natural_w.min(r.width.max(natural_w));
     let _ = write!(
         svg,
         r#"<path d="M{x:.1} {y:.1} h{hw:.1} v{hh:.1} h-{inner:.1} a8 8 0 0 1 -8 -8 v-{rest:.1} z" fill="{color}"/>"#,

@@ -217,7 +217,22 @@ pub(crate) fn apply(graph: &mut Graph, lg: &LayoutGraph, options: &LayoutOptions
             }
         }
         if let Some(bounds) = acc {
-            graph.subgraphs[si].rect = bounds.inflate(options.cluster_padding);
+            let mut rect = bounds.inflate(options.cluster_padding);
+            // If this cluster contains nested child clusters, reserve extra
+            // room at the top so its own header bar sits clearly above the
+            // children's headers (otherwise the inner AWS/VPC header bar
+            // overlaps and clips against the parent's — the nested-header
+            // bug). Header bar is ~26px; padding gives 24, so add the gap.
+            let has_child = graph
+                .subgraphs
+                .iter()
+                .any(|c| c.parent == Some(layra_core::SubgraphId(si as u32)));
+            if has_child {
+                const HEADER_CLEARANCE: f32 = 18.0;
+                rect.y -= HEADER_CLEARANCE;
+                rect.height += HEADER_CLEARANCE;
+            }
+            graph.subgraphs[si].rect = rect;
         }
     }
 }

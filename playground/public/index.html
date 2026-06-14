@@ -172,7 +172,7 @@
           <dt><kbd>?</kbd></dt><dd>This help</dd>
           <dt><kbd>+</kbd> / <kbd>−</kbd></dt><dd>Zoom in / out</dd>
           <dt><kbd>0</kbd></dt><dd>Fit to view</dd>
-          <dt><kbd>D</kbd></dt><dd>Toggle dark mode</dd>
+          <dt><kbd>D</kbd></dt><dd>Toggle light / dark</dd>
           <dt><kbd>A</kbd></dt><dd>Animate edges</dd>
           <dt><kbd>Space</kbd> + drag</dt><dd>Pan the canvas</dd>
           <dt>Drag a node</dt><dd>Reposition it</dd>
@@ -196,6 +196,57 @@
         </ul>
         <p class="help-foot">New to it? Use <strong>New ▾</strong> for a starter, or
           <strong>Examples</strong> for full diagrams.</p>
+      </section>
+    </div>
+  </div>
+</div>
+
+<!-- Theme editor (U20): preset brand themes + a custom accent/font/background
+     editor. Choice persists in localStorage and bakes into exported SVG. -->
+<div id="theme" class="theme-dialog" hidden>
+  <div class="theme-backdrop"></div>
+  <div class="theme-panel" role="dialog" aria-modal="true" aria-labelledby="theme-title">
+    <div class="theme-head">
+      <div>
+        <h2 id="theme-title">Theme &amp; brand</h2>
+        <p class="theme-sub">Pick a preset or craft your own. Colours bake into exported SVG.</p>
+      </div>
+      <button id="theme-close" class="theme-close" aria-label="Close theme editor" title="Close (Esc)">✕</button>
+    </div>
+    <div class="theme-body">
+      <section>
+        <h3>Presets</h3>
+        <div class="theme-presets" id="theme-presets" role="group" aria-label="Preset themes"></div>
+      </section>
+      <section>
+        <h3>Custom</h3>
+        <div class="theme-custom">
+          <label class="theme-field">
+            <span>Base</span>
+            <select id="theme-base" aria-label="Base palette">
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+          </label>
+          <label class="theme-field">
+            <span>Accent</span>
+            <span class="theme-color-wrap">
+              <input type="color" id="theme-accent" aria-label="Accent colour" />
+              <input type="text" id="theme-accent-hex" class="theme-hex" spellcheck="false" aria-label="Accent hex" />
+            </span>
+          </label>
+          <label class="theme-field">
+            <span>Background</span>
+            <span class="theme-color-wrap">
+              <input type="color" id="theme-bg" aria-label="Background colour" />
+              <input type="text" id="theme-bg-hex" class="theme-hex" spellcheck="false" aria-label="Background hex" />
+            </span>
+          </label>
+          <label class="theme-field">
+            <span>Font</span>
+            <select id="theme-font" aria-label="Font family"></select>
+          </label>
+        </div>
       </section>
     </div>
   </div>

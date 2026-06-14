@@ -12,6 +12,11 @@
 //!   (or returned inline when no path given).
 //! - `list_shapes {}` → the node shapes, role classes, edge styles, and
 //!   icon syntax the engine understands, so an agent knows what it can use.
+//! - `list_icons {}` → every bundled infra/cloud icon key (106+) with its
+//!   service category + accent color, so an agent references glyphs that
+//!   actually render.
+//! - `lint_diagram { source }` → structured quality warnings beyond parse
+//!   errors (orphan nodes, label overflow) so an agent can self-correct.
 //!
 //! Implements the JSON-RPC subset MCP needs (initialize, tools/list,
 //! tools/call) by hand — the protocol surface is 3 methods; a framework
@@ -108,6 +113,26 @@ fn tools_list() -> serde_json::Value {
                     "properties": {},
                     "additionalProperties": false
                 }
+            },
+            {
+                "name": "list_icons",
+                "description": "List every bundled infra/cloud icon key (106+) with its service category (compute, storage, database, network, security, integration, analytics, management, general) and accent color. Use a returned `ref` like {icon:aws:lambda} inside a node label, e.g. id[\"{icon:aws:lambda} Worker\"]. Call this before adding icons so you only reference glyphs that actually render. Takes no arguments.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {},
+                    "additionalProperties": false
+                }
+            },
+            {
+                "name": "lint_diagram",
+                "description": "Lint a diagram beyond parse errors: returns structured quality warnings an agent can act on — unparseable lines, orphan nodes (no edges), and labels that overflow their node box. Returns JSON with severity/line/kind/message. Use after validate_diagram to catch issues that still render but look wrong.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "source": { "type": "string", "description": "Diagram source text" }
+                    },
+                    "required": ["source"]
+                }
             }
         ]
     })
@@ -132,6 +157,8 @@ fn tools_call(params: Option<&serde_json::Value>) -> serde_json::Value {
             render(source, dark, path)
         }
         "list_shapes" => Ok(list_shapes()),
+        "list_icons" => layra_wasm::list_icons_json(),
+        "lint_diagram" => layra_wasm::lint_diagram_json(source),
         other => Err(format!("unknown tool: {other}")),
     };
 

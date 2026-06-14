@@ -88,6 +88,108 @@ pub fn load_icon_pack(json: &str) -> Result<usize, String> {
         .map_err(|e| e.to_string())
 }
 
+/// Every bundled icon key with its service category and accent color, as
+/// JSON: `{"count": N, "icons": [{"key": "aws:lambda", "ref":
+/// "{icon:aws:lambda}", "category": "compute", "color": "#ED7100"}, ...]}`.
+/// Backs the MCP `list_icons` tool so an agent can author `{icon:...}` refs
+/// that actually render instead of guessing names.
+pub fn list_icons_json() -> Result<String, String> {
+    let reg = registry().lock().map_err(|e| e.to_string())?;
+    let icons: Vec<serde_json::Value> = reg
+        .entries()
+        .into_iter()
+        .map(|(key, category)| {
+            serde_json::json!({
+                "key": key,
+                "ref": format!("{{icon:{key}}}"),
+                "category": category.map(|c| c.name()),
+                "color": category.map(|c| c.color()),
+            })
+        })
+        .collect();
+    serde_json::to_string_pretty(&serde_json::json!({
+        "count": icons.len(),
+        "note": "Use a ref inside a node label, e.g. id[\"{icon:aws:lambda} Worker\"]. The aws: and infra: prefixes alias the same set.",
+        "icons": icons,
+    }))
+    .map_err(|e| e.to_string())
+}
+
+/// Lint a diagram beyond parse errors: structured quality warnings an agent
+/// can act on. Returns JSON `{"ok": bool, "warnings": [{"severity","line?",
+/// "kind","message"}]}`. Detects unparseable lines (from the lenient parse),
+/// orphan nodes (a node with no edges in a multi-node graph), and labels
+/// whose measured text would overflow their node box.
+pub fn lint_diagram_json(source: &str) -> Result<String, String> {
+    use serde_json::json;
+    if source.trim().is_empty() {
+        return Err("source is empty".into());
+    }
+    let (doc, parse_warnings) = layra_parser::parse_document_lenient(source);
+    let mut warnings: Vec<serde_json::Value> = parse_warnings
+        .iter()
+        .map(|e| {
+            json!({
+                "severity": "error",
+                "line": e.line(),
+                "kind": "parse",
+                "message": e.message(),
+            })
+        })
+        .collect();
+
+    if let layra_core::Document::Graph(mut graph) = doc {
+        // Orphans: in a graph with several nodes, a node touched by no edge is
+        // usually an accident (typo'd edge endpoint, forgotten arrow).
+        if graph.nodes.len() > 1 {
+            let mut connected = std::collections::HashSet::new();
+            for edge in &graph.edges {
+                connected.insert(edge.source);
+                connected.insert(edge.target);
+            }
+            for (i, node) in graph.nodes.iter().enumerate() {
+                let id = layra_core::NodeId(i as u32);
+                if !connected.contains(&id) {
+                    warnings.push(json!({
+                        "severity": "warning",
+                        "kind": "orphan_node",
+                        "message": format!(
+                            "node '{}' has no edges — connect it or remove it",
+                            node.name
+                        ),
+                    }));
+                }
+            }
+        }
+
+        // Label overflow: measure + lay out, then flag any node whose label is
+        // wider than its box (the engine should size to fit; a flag here means
+        // a pathological label the author may want to shorten).
+        layra_text::measure_graph(&mut graph, &layra_text::TextOptions::default());
+        layra_layout::layout(&mut graph, &layra_layout::LayoutOptions::default());
+        for node in &graph.nodes {
+            let text_w = layra_text::measure_line(&node.label, 14.0);
+            if text_w > node.rect.width + 0.5 {
+                warnings.push(json!({
+                    "severity": "warning",
+                    "kind": "label_overflow",
+                    "message": format!(
+                        "label '{}' (~{:.0}px) is wider than node '{}' box ({:.0}px)",
+                        node.label, text_w, node.name, node.rect.width
+                    ),
+                }));
+            }
+        }
+    }
+
+    serde_json::to_string_pretty(&json!({
+        "ok": warnings.is_empty(),
+        "count": warnings.len(),
+        "warnings": warnings,
+    }))
+    .map_err(|e| e.to_string())
+}
+
 /// JS-facing entry point. Throws a JS error with the parse message on
 /// failure (carrying the line number).
 #[wasm_bindgen]
@@ -309,5 +411,63 @@ mod tests {
             chip_w >= text_w,
             "chip width {chip_w} must cover wide label text {text_w}"
         );
+    }
+
+    /// D3: `list_icons` exposes the full bundled set with category + color so
+    /// an agent can reference glyphs that actually render.
+    #[test]
+    fn list_icons_reports_full_set_with_categories() {
+        let json = list_icons_json().unwrap();
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let count = v["count"].as_u64().unwrap();
+        assert!(count >= 100, "expected the full bundled set, got {count}");
+
+        let icons = v["icons"].as_array().unwrap();
+        // Every entry has a usable {icon:...} ref.
+        assert!(icons.iter().all(|i| i["ref"]
+            .as_str()
+            .is_some_and(|r| r.starts_with("{icon:") && r.ends_with('}'))));
+        // A known compute glyph is categorized with the AWS orange accent.
+        let lambda = icons
+            .iter()
+            .find(|i| i["key"] == "aws:lambda")
+            .expect("aws:lambda must be bundled");
+        assert_eq!(lambda["category"], "compute");
+        assert_eq!(lambda["color"], "#ED7100");
+    }
+
+    /// D3: `lint_diagram` flags an orphan node (no edges) but passes a clean
+    /// connected graph.
+    #[test]
+    fn lint_flags_orphan_node_but_passes_clean_graph() {
+        let clean = lint_diagram_json("flowchart TD\n  A[Start] --> B[End]").unwrap();
+        let cv: serde_json::Value = serde_json::from_str(&clean).unwrap();
+        assert_eq!(cv["ok"], true, "clean graph should lint ok: {clean}");
+
+        let dirty = lint_diagram_json("flowchart TD\n  A[Start] --> B[End]\n  C[Orphan]").unwrap();
+        let dv: serde_json::Value = serde_json::from_str(&dirty).unwrap();
+        assert_eq!(dv["ok"], false);
+        let kinds: Vec<&str> = dv["warnings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|w| w["kind"].as_str())
+            .collect();
+        assert!(kinds.contains(&"orphan_node"), "got {kinds:?}");
+    }
+
+    /// D3: `lint_diagram` surfaces an unparseable line with its line number.
+    #[test]
+    fn lint_reports_parse_error_with_line() {
+        let json = lint_diagram_json("flowchart TD\n  A --> B\n  @@@ broken @@@").unwrap();
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let parse_w = v["warnings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|w| w["kind"] == "parse")
+            .expect("a parse warning");
+        assert_eq!(parse_w["severity"], "error");
+        assert_eq!(parse_w["line"], 3);
     }
 }

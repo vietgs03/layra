@@ -46,6 +46,22 @@ pub enum ParseError {
     Syntax { line: usize, message: String },
 }
 
+impl ParseError {
+    /// 1-based source line this error refers to.
+    pub fn line(&self) -> usize {
+        match self {
+            ParseError::Syntax { line, .. } => *line,
+        }
+    }
+
+    /// The human-readable message, without the `line N:` prefix.
+    pub fn message(&self) -> &str {
+        match self {
+            ParseError::Syntax { message, .. } => message,
+        }
+    }
+}
+
 /// Parse any supported diagram type, dispatching on the header line:
 /// `flowchart`/`graph`, `sequenceDiagram`, `stateDiagram`/`stateDiagram-v2`.
 pub fn parse_document(source: &str) -> Result<Document, ParseError> {

@@ -88,6 +88,23 @@ impl IconCategory {
             IconCategory::General => "#5A6B86",
         }
     }
+
+    /// Stable lowercase identifier for this category (matches the JSON
+    /// `category` field). Used by tooling (the MCP `list_icons` tool) and
+    /// the palette to group glyphs by service family.
+    pub fn name(self) -> &'static str {
+        match self {
+            IconCategory::Compute => "compute",
+            IconCategory::Storage => "storage",
+            IconCategory::Database => "database",
+            IconCategory::Network => "network",
+            IconCategory::Security => "security",
+            IconCategory::Integration => "integration",
+            IconCategory::Analytics => "analytics",
+            IconCategory::Management => "management",
+            IconCategory::General => "general",
+        }
+    }
 }
 
 impl Icon {
@@ -225,6 +242,20 @@ impl IconRegistry {
     /// (L10) to derive an accent border/fill from the icon a node carries.
     pub fn category(&self, key: &str) -> Option<IconCategory> {
         self.get(key).and_then(|icon| icon.category)
+    }
+
+    /// Iterate every registered icon as `(key, category)`, sorted by key for
+    /// stable output. Backs the MCP `list_icons` tool so an agent can
+    /// discover the exact `{icon:...}` refs (and their service family) that
+    /// actually render, instead of guessing names.
+    pub fn entries(&self) -> Vec<(&str, Option<IconCategory>)> {
+        let mut out: Vec<(&str, Option<IconCategory>)> = self
+            .icons
+            .iter()
+            .map(|(k, icon)| (k.as_str(), icon.category))
+            .collect();
+        out.sort_by(|a, b| a.0.cmp(b.0));
+        out
     }
 }
 

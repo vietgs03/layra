@@ -552,11 +552,88 @@ main { display: flex; flex: 1; min-height: 0; }
 #viewport.drag-over {
   cursor: copy;
   box-shadow: inset 0 0 0 2px var(--accent),
-    inset 0 0 0 9999px color-mix(in srgb, var(--accent) 6%, transparent);
+    inset 0 0 0 9999px color-mix(in srgb, var(--accent) 7%, transparent);
 }
-/* The palette item being dragged dims to signal liftoff. */
-.palette-item.dragging, .palette-icon.dragging { opacity: 0.45; }
+/* The palette item being dragged lifts and dims to signal liftoff. */
+.palette-item.dragging, .palette-icon.dragging {
+  opacity: 0.4;
+  border-color: var(--accent);
+}
 .palette-item, .palette-icon { -webkit-user-drag: element; }
+/* While a palette drag is in flight, suppress text selection everywhere. */
+body.dragging-palette { cursor: grabbing; user-select: none; -webkit-user-select: none; }
+
+/* ---------------- palette drag ghost + drop indicator ---------------- */
+/* A floating preview that follows the cursor during a palette drag. */
+.drag-ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 400;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 600;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.28);
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-9999px, -9999px);
+  transition: opacity 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+  will-change: transform;
+}
+.drag-ghost.show { opacity: 0.96; }
+.drag-ghost.over-canvas {
+  border-color: var(--accent);
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--accent) 30%, rgba(0,0,0,0.28));
+}
+.drag-ghost-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  color: var(--accent);
+}
+.drag-ghost-icon svg { display: block; width: 22px; height: 22px; }
+.drag-ghost-glyph { font-size: 18px; color: var(--accent); }
+.drag-ghost-label { white-space: nowrap; }
+
+/* A dashed placeholder shown inside the viewport at the exact drop point. */
+.drop-indicator {
+  position: absolute;
+  z-index: 6;
+  width: 116px;
+  height: 46px;
+  margin-left: -58px;
+  margin-top: -23px;
+  border: 2px dashed var(--accent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  opacity: 0;
+  transform: scale(0.92);
+  transition: opacity 0.1s ease, transform 0.1s ease;
+}
+.drop-indicator.show { opacity: 1; transform: scale(1); }
+.drop-indicator-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 104px;
+}
 #preview {
   position: absolute;
   transform-origin: 0 0;

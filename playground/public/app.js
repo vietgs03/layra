@@ -1487,6 +1487,12 @@ const DROP_NODE = {
   queue:    (id) => `${id}{{"Queue"}}:::queue`,
   circle:   (id) => `${id}(("Label"))`,
 };
+// Friendly labels for the confirmation toast / drop ghost.
+const DROP_LABEL = {
+  rect: "Process", rounded: "Rounded box", stadium: "Terminal", decision: "Decision",
+  database: "Database", queue: "Queue", circle: "Circle", subgraph: "Subgraph",
+  arrow: "Arrow", labeled: "Labeled edge", dashed: "Dashed edge", thick: "Thick edge",
+};
 // Multi-line / multi-node snippets (no single node to position).
 const DROP_RAW = {
   subgraph: () => `subgraph cluster${++dropCounter}["Group"]\n  a --> b\nend`,
@@ -1497,21 +1503,22 @@ const DROP_RAW = {
 };
 
 // Resolve a draggable palette element to the text to append plus, when it is a
-// single node, the id we can position at the drop point.
+// single node, the id we can position at the drop point, and a human label for
+// the confirmation toast / drag ghost.
 function dropPayload(el) {
   if (el.dataset.infra) {
     const key = el.dataset.infra;                       // e.g. "aws:lambda"
     const base = (key.split(":")[1] || "node").replace(/[^a-z0-9]/gi, "");
     const label = el.querySelector(".pi-name")?.textContent?.trim() || base;
     const name = `${base}${++dropCounter}`;
-    return { text: `${name}["{icon:${key}} ${label}"]`, name };
+    return { text: `${name}["{icon:${key}} ${label}"]`, name, label };
   }
   const key = el.dataset.snip;
   if (DROP_NODE[key]) {
     const name = `n${++dropCounter}`;
-    return { text: DROP_NODE[key](name), name };
+    return { text: DROP_NODE[key](name), name, label: DROP_LABEL[key] ?? "Node" };
   }
-  if (DROP_RAW[key]) return { text: DROP_RAW[key](), name: null };
+  if (DROP_RAW[key]) return { text: DROP_RAW[key](), name: null, label: DROP_LABEL[key] ?? "Snippet" };
   return null;
 }
 
@@ -1547,45 +1554,139 @@ function placeDroppedNodeAt(name, clientX, clientY) {
 
 let activeDrag = null; // payload of the in-flight palette drag
 
-palette.addEventListener("dragstart", (e) => {
-  const el = e.target.closest?.(".palette-item[data-snip], .palette-icon[data-infra]");
-  if (!el) return;
-  activeDrag = dropPayload(el);
-  if (!activeDrag) return;
-  el.classList.add("dragging");
-  if (e.dataTransfer) {
-    e.dataTransfer.effectAllowed = "copy";
-    // Standards-correct fallback so a drop onto another app/tab still works.
-    e.dataTransfer.setData("text/plain", activeDrag.text);
-  }
-});
-palette.addEventListener("dragend", (e) => {
-  e.target.closest?.(".dragging")?.classList.remove("dragging");
-  activeDrag = null;
-  viewport.classList.remove("drag-over");
-});
+/* Pointer-based palette drag. Native HTML5 drag (`dragstart`/`drop`) gives no
+   live visual feedback and — crucially — never fires for synthetic pointer
+   input, which is exactly why v0.3 felt like "I can't drag". Here we drive the
+   whole gesture from pointer events: a ghost element tracks the cursor, the
+   canvas highlights as a drop target, a dashed placeholder shows precisely
+   where the new node will land, and a confirmation toast fires on drop. Works
+   identically for real mice, touch, and automated tests. */
 
-viewport.addEventListener("dragover", (e) => {
-  if (!activeDrag) return;
-  e.preventDefault(); // required so the drop event fires
-  if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
-  viewport.classList.add("drag-over");
-});
-viewport.addEventListener("dragleave", (e) => {
-  // Only clear when the pointer actually leaves the viewport.
-  if (e.target === viewport) viewport.classList.remove("drag-over");
-});
-viewport.addEventListener("drop", (e) => {
-  e.preventDefault();
+const DRAG_THRESHOLD = 4; // px the pointer must travel before a drag begins
+let pendingDrag = null;   // { el, payload, sx, sy, pointerId } before threshold
+let dragGhost = null;     // floating element following the cursor
+let dropIndicator = null; // dashed placeholder inside the viewport
+
+// Lazily create the floating ghost that tracks the cursor during a drag.
+function ensureGhost() {
+  if (!dragGhost) {
+    dragGhost = document.createElement("div");
+    dragGhost.className = "drag-ghost";
+    dragGhost.setAttribute("aria-hidden", "true");
+    document.body.appendChild(dragGhost);
+  }
+  return dragGhost;
+}
+
+// Lazily create the dashed drop placeholder shown inside the viewport.
+function ensureDropIndicator() {
+  if (!dropIndicator) {
+    dropIndicator = document.createElement("div");
+    dropIndicator.className = "drop-indicator";
+    dropIndicator.setAttribute("aria-hidden", "true");
+    dropIndicator.innerHTML = `<span class="drop-indicator-label"></span>`;
+    viewport.appendChild(dropIndicator);
+  }
+  return dropIndicator;
+}
+
+// Is the given client point inside the canvas viewport?
+function pointInViewport(clientX, clientY) {
+  const r = viewport.getBoundingClientRect();
+  return clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom;
+}
+
+// Position the ghost + drop indicator for the current pointer location.
+function updateDragVisuals(clientX, clientY) {
+  const ghost = ensureGhost();
+  ghost.style.transform = `translate(${clientX + 14}px, ${clientY + 14}px)`;
+  const over = pointInViewport(clientX, clientY);
+  viewport.classList.toggle("drag-over", over);
+  ghost.classList.toggle("over-canvas", over);
+  const ind = ensureDropIndicator();
+  if (over && activeDrag) {
+    const r = viewport.getBoundingClientRect();
+    ind.style.left = `${clientX - r.left}px`;
+    ind.style.top = `${clientY - r.top}px`;
+    ind.querySelector(".drop-indicator-label").textContent = activeDrag.label || "Drop here";
+    ind.classList.add("show");
+  } else {
+    ind.classList.remove("show");
+  }
+}
+
+// Begin a drag once the pointer has moved past the threshold.
+function beginPaletteDrag(clientX, clientY) {
+  const { el, payload } = pendingDrag;
+  activeDrag = payload;
+  el.classList.add("dragging");
+  document.body.classList.add("dragging-palette");
+  const ghost = ensureGhost();
+  // Mirror the palette tile so the ghost reads as "this thing you grabbed".
+  const glyph = el.querySelector(".pi-icon")?.innerHTML
+    || `<span class="drag-ghost-glyph">${el.querySelector(".pi-glyph")?.textContent ?? "▭"}</span>`;
+  ghost.innerHTML = `<span class="drag-ghost-icon">${glyph}</span>` +
+    `<span class="drag-ghost-label">${payload.label || "Node"}</span>`;
+  ghost.classList.add("show");
+  updateDragVisuals(clientX, clientY);
+}
+
+// Tear down all drag visuals (called on drop or cancel).
+function endPaletteDrag() {
+  if (dragGhost) dragGhost.classList.remove("show", "over-canvas");
+  if (dropIndicator) dropIndicator.classList.remove("show");
   viewport.classList.remove("drag-over");
-  const payload = activeDrag ?? (e.dataTransfer?.getData("text/plain")
-    ? { text: e.dataTransfer.getData("text/plain"), name: null } : null);
+  document.body.classList.remove("dragging-palette");
+  for (const el of palette.querySelectorAll(".dragging")) el.classList.remove("dragging");
+  pendingDrag = null;
   activeDrag = null;
+}
+
+// Complete a drop: append the source, render, position the node, confirm.
+function finishDropAt(clientX, clientY) {
+  const payload = activeDrag;
   if (!payload) return;
   appendToDiagram(payload.text);
   doRender(); // render now so the new node exists for positioning
-  if (payload.name) placeDroppedNodeAt(payload.name, e.clientX, e.clientY);
+  if (payload.name) placeDroppedNodeAt(payload.name, clientX, clientY);
+  showToast(`Added ${payload.label || "node"} to the canvas`);
+}
+
+palette.addEventListener("pointerdown", (e) => {
+  if (e.button !== 0) return;
+  const el = e.target.closest?.(".palette-item[data-snip], .palette-icon[data-infra]");
+  if (!el) return;
+  const payload = dropPayload(el);
+  if (!payload) return;
+  pendingDrag = { el, payload, sx: e.clientX, sy: e.clientY, pointerId: e.pointerId };
 });
+
+window.addEventListener("pointermove", (e) => {
+  if (!pendingDrag) return;
+  if (!activeDrag) {
+    // Still waiting to cross the movement threshold.
+    if (Math.hypot(e.clientX - pendingDrag.sx, e.clientY - pendingDrag.sy) < DRAG_THRESHOLD) return;
+    beginPaletteDrag(e.clientX, e.clientY);
+  }
+  updateDragVisuals(e.clientX, e.clientY);
+  e.preventDefault();
+});
+
+window.addEventListener("pointerup", (e) => {
+  if (!pendingDrag) return;
+  const wasDragging = !!activeDrag;
+  const overCanvas = pointInViewport(e.clientX, e.clientY);
+  if (wasDragging && overCanvas) finishDropAt(e.clientX, e.clientY);
+  endPaletteDrag();
+});
+
+// Esc cancels an in-flight drag without dropping.
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && (pendingDrag || activeDrag)) endPaletteDrag();
+});
+
+// Suppress the browser's native drag image (we draw our own ghost).
+palette.addEventListener("dragstart", (e) => e.preventDefault());
 $("palette-toggle").addEventListener("click", () => {
   const collapsed = palette.classList.toggle("collapsed");
   $("palette-toggle").setAttribute("aria-expanded", String(!collapsed));

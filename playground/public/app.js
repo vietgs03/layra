@@ -967,6 +967,8 @@ function reportError(message) {
   const line = m ? Number(m[1]) : null;
   highlightLine(line);
   editor.setAttribute("aria-invalid", "true");
+  // Inline diagnostic (squiggle + gutter dot + quick-fix) for the error line.
+  setDiagnostics(line != null ? [parseDiag(message, "error")] : []);
   showIssueToast(message, line, "error");
 }
 
@@ -1087,6 +1089,256 @@ function markGutterActive() {
   }
 }
 
+/* ---------------- inline diagnostics (U21) ---------------- */
+// The lenient render returns line-numbered warnings ("line N: ...") and the
+// strict path throws errors carrying "line N". We surface every one of them
+// INLINE: a wavy underline drawn over the offending editor line plus a gutter
+// dot, and a clickable flag that opens a quick-fix popover. Quick-fixes are
+// derived from the message + line text; applying one edits the source and
+// re-renders. The overlay is kept aligned to the textarea via scroll/resize.
+
+const squiggles = $("squiggles");
+let diagnostics = [];       // [{ line, message, severity }]
+let quickfixEl = null;      // the open popover, if any
+
+// Parse a "line N: rest" / "... line N ..." engine message into {line, message}.
+function parseDiag(raw, severity) {
+  const text = String(raw);
+  const m = /line (\d+):?\s*/.exec(text);
+  const line = m ? Number(m[1]) : null;
+  // Strip the leading "line N:" so the inline message reads cleanly.
+  const message = m ? text.replace(/^line \d+:\s*/, "").trim() || text : text;
+  return { line, message, severity };
+}
+
+// Replace the current diagnostic set and repaint the overlay.
+function setDiagnostics(list) {
+  diagnostics = list.filter((d) => Number.isFinite(d.line) && d.line >= 1);
+  renderSquiggles();
+  // Mirror onto the gutter dots.
+  for (const el of gutter.querySelectorAll(".gl.has-issue")) {
+    el.classList.remove("has-issue", "warn-issue");
+  }
+  for (const d of diagnostics) {
+    const gl = gutter.querySelector(`.gl[data-ln="${d.line}"]`);
+    if (gl) {
+      gl.classList.add("has-issue");
+      if (d.severity === "warn") gl.classList.add("warn-issue");
+    }
+  }
+}
+
+function clearDiagnostics() {
+  if (diagnostics.length) setDiagnostics([]);
+  closeQuickfix();
+}
+
+// Lay a wavy underline over each diagnostic line, aligned to the textarea's
+// metrics and scroll. Width spans the trimmed line text (or the whole line).
+function renderSquiggles() {
+  squiggles.replaceChildren();
+  if (!diagnostics.length) return;
+  const cs = getComputedStyle(editor);
+  const lh = parseFloat(cs.lineHeight) || 21;
+  const padTop = parseFloat(cs.paddingTop) || 14;
+  const padLeft = parseFloat(cs.paddingLeft) || 16;
+  const chW = measureCharWidth();
+  const srcLines = editor.value.split("\n");
+  for (const d of diagnostics) {
+    const text = srcLines[d.line - 1] ?? "";
+    const leading = text.length - text.trimStart().length;
+    const trimmed = text.trim();
+    const y = padTop + (d.line - 1) * lh - editor.scrollTop;
+    // Off-screen above/below: skip (overflow:hidden would clip anyway).
+    if (y + lh < 0 || y > squiggles.clientHeight) continue;
+    const el = document.createElement("div");
+    el.className = `squiggle ${d.severity === "warn" ? "warn" : ""}`.trim();
+    el.style.top = `${y}px`;
+    el.style.left = `${padLeft + leading * chW - editor.scrollLeft}px`;
+    el.style.width = `${Math.max(trimmed.length, 1) * chW}px`;
+    const flag = document.createElement("button");
+    flag.type = "button";
+    flag.className = "squiggle-flag";
+    flag.textContent = d.severity === "warn" ? "!" : "✕";
+    flag.title = `${d.message} — click for quick-fix`;
+    flag.setAttribute("aria-label", `Line ${d.line}: ${d.message}. Click for quick-fix.`);
+    flag.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openQuickfix(d);
+    });
+    el.appendChild(flag);
+    squiggles.appendChild(el);
+  }
+}
+
+// Measure the monospace advance width once (cached); the editor uses a
+// fixed-pitch font so a single space measurement aligns underlines exactly.
+let cachedCharW = 0;
+let cachedCharWFont = "";
+function measureCharWidth() {
+  const cs = getComputedStyle(editor);
+  const fontKey = `${cs.fontSize} ${cs.fontFamily}`;
+  if (cachedCharW && cachedCharWFont === fontKey) return cachedCharW;
+  const canvas = measureCharWidth._c ?? (measureCharWidth._c = document.createElement("canvas"));
+  const ctx = canvas.getContext("2d");
+  ctx.font = `${cs.fontSize} ${cs.fontFamily}`;
+  cachedCharW = ctx.measureText("0".repeat(20)).width / 20 || 8.1;
+  cachedCharWFont = fontKey;
+  return cachedCharW;
+}
+
+// Derive zero or more quick-fixes for a diagnostic from its message + line.
+// Each fix is { label, apply: (lineText) => newLineText | null }. A null means
+// "delete the line". Heuristics map common engine errors to one-click repairs.
+function quickFixesFor(d) {
+  const fixes = [];
+  const text = (editor.value.split("\n")[d.line - 1] ?? "");
+  const trimmed = text.trim();
+  const msg = d.message.toLowerCase();
+
+  // "expected edge operator near 'X'": likely a missing arrow between two ids.
+  if (msg.includes("expected edge operator")) {
+    const parts = trimmed.split(/\s+/);
+    if (parts.length >= 2) {
+      fixes.push({
+        label: "Insert --> arrow",
+        preview: indentLike(text, `${parts[0]} --> ${parts.slice(1).join(" ")}`),
+        apply: () => indentLike(text, `${parts[0]} --> ${parts.slice(1).join(" ")}`),
+      });
+    }
+  }
+
+  // Unbalanced quotes on the line: close the dangling quote.
+  if ((trimmed.match(/"/g) || []).length % 2 === 1) {
+    fixes.push({
+      label: 'Close the "quote"',
+      preview: `${text}"`,
+      apply: () => `${text}"`,
+    });
+  }
+
+  // Unbalanced brackets: append the missing closer.
+  for (const [open, close] of [["[", "]"], ["{", "}"], ["(", ")"]]) {
+    const opens = (trimmed.split(open).length - 1);
+    const closes = (trimmed.split(close).length - 1);
+    if (opens > closes) {
+      fixes.push({
+        label: `Add missing ${close}`,
+        preview: `${text}${close.repeat(opens - closes)}`,
+        apply: () => `${text}${close.repeat(opens - closes)}`,
+      });
+    }
+  }
+
+  // Always offer: comment the line out (skips it cleanly), and delete it.
+  fixes.push({
+    label: "Comment out line",
+    preview: `%% ${trimmed}`,
+    apply: () => indentLike(text, `%% ${trimmed}`),
+  });
+  fixes.push({ label: "Delete line", danger: true, apply: () => null });
+  return fixes;
+}
+
+// Preserve the original indentation when rewriting a line's content.
+function indentLike(original, content) {
+  const indent = original.slice(0, original.length - original.trimStart().length);
+  return indent + content;
+}
+
+// Replace 1-based `line` with `newText` (or remove it when newText is null),
+// then re-render. Keeps caret near the edit.
+function applyLineEdit(line, newText) {
+  const lines = editor.value.split("\n");
+  if (line < 1 || line > lines.length) return;
+  if (newText == null) lines.splice(line - 1, 1);
+  else lines[line - 1] = newText;
+  editor.value = lines.join("\n");
+  closeQuickfix();
+  scheduleRender();
+  // Put the caret on the edited (or following) line.
+  const target = Math.min(line, lines.length || 1);
+  jumpToLine(target);
+}
+
+// Open the quick-fix popover for a diagnostic, anchored to its line.
+function openQuickfix(d) {
+  closeQuickfix();
+  const fixes = quickFixesFor(d);
+  const pop = document.createElement("div");
+  pop.className = "quickfix";
+  pop.setAttribute("role", "dialog");
+  pop.setAttribute("aria-label", "Quick fix");
+
+  const msg = document.createElement("span");
+  msg.className = "quickfix-msg";
+  msg.innerHTML = `<span class="qf-line">line ${d.line}</span> · ${escapeHtml(d.message)}`;
+  pop.appendChild(msg);
+
+  const actions = document.createElement("div");
+  actions.className = "quickfix-actions";
+  for (const fix of fixes) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = `quickfix-btn ${fix.danger ? "secondary" : ""}`.trim();
+    btn.textContent = fix.label;
+    if (fix.preview) btn.title = fix.preview;
+    btn.addEventListener("click", () => applyLineEdit(d.line, fix.apply()));
+    actions.appendChild(btn);
+  }
+  // A jump-to-line shortcut even when no structural fix applies.
+  const jump = document.createElement("button");
+  jump.type = "button";
+  jump.className = "quickfix-btn secondary";
+  jump.textContent = "Go to line";
+  jump.addEventListener("click", () => { jumpToLine(d.line); closeQuickfix(); });
+  actions.appendChild(jump);
+  pop.appendChild(actions);
+
+  document.body.appendChild(pop);
+  quickfixEl = pop;
+  positionQuickfix(d);
+  // First action gets focus for keyboard users.
+  pop.querySelector(".quickfix-btn")?.focus();
+
+  // Close on Escape / outside click.
+  pop.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { e.preventDefault(); closeQuickfix(); editor.focus(); }
+  });
+}
+
+// Place the popover just below the offending line's flag, clamped to viewport.
+function positionQuickfix(d) {
+  if (!quickfixEl) return;
+  const cs = getComputedStyle(editor);
+  const lh = parseFloat(cs.lineHeight) || 21;
+  const padTop = parseFloat(cs.paddingTop) || 14;
+  const rect = editor.getBoundingClientRect();
+  const y = rect.top + padTop + (d.line - 1) * lh - editor.scrollTop + lh + 4;
+  let x = rect.left + 40;
+  const pw = quickfixEl.offsetWidth || 240;
+  if (x + pw > window.innerWidth - 8) x = window.innerWidth - pw - 8;
+  quickfixEl.style.left = `${Math.max(8, x)}px`;
+  quickfixEl.style.top = `${Math.min(y, window.innerHeight - quickfixEl.offsetHeight - 8)}px`;
+}
+
+function closeQuickfix() {
+  quickfixEl?.remove();
+  quickfixEl = null;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+// Dismiss the popover when clicking elsewhere.
+document.addEventListener("click", (e) => {
+  if (quickfixEl && !e.target.closest(".quickfix") && !e.target.closest(".squiggle-flag")) {
+    closeQuickfix();
+  }
+});
+
 // Mirror the textarea's vertical scroll onto the gutter (translate, no reflow).
 function syncGutterScroll() {
   gutter.scrollTop = editor.scrollTop;
@@ -1147,6 +1399,7 @@ function doRender() {
     status.textContent = "empty — pick an example or start typing";
     status.className = "status ok";
     highlightLine(null);
+    clearDiagnostics();
     lastGoodSvg = "";
     minimap.hidden = true;
     return;
@@ -1171,12 +1424,15 @@ function doRender() {
       const line = m ? Number(m[1]) : null;
       highlightLine(line);
       editor.setAttribute("aria-invalid", "false");
+      // Surface EVERY skipped line inline (squiggle + gutter dot + quick-fix).
+      setDiagnostics(warnings.map((w) => parseDiag(w, "warn")));
       showIssueToast(warnings[0], line, "warn", warnings.length);
     } else {
       status.textContent = "ok";
       status.className = "status ok";
       highlightLine(null);
       editor.setAttribute("aria-invalid", "false");
+      clearDiagnostics();
       dismissIssueToast();
     }
   } catch (e) {
@@ -2570,6 +2826,8 @@ async function main() {
   editor.addEventListener("input", scheduleRender);
   editor.addEventListener("scroll", () => {
     syncGutterScroll();
+    renderSquiggles();
+    closeQuickfix();
     if (status.classList.contains("err") || status.classList.contains("warn")) {
       const m = /line (\d+)/.exec(status.textContent);
       highlightLine(m ? Number(m[1]) : null);
@@ -2579,6 +2837,9 @@ async function main() {
   window.addEventListener("resize", () => {
     if (!userTouchedView) fitToView();
     else updateMinimapView();
+    cachedCharW = 0;       // metrics may change with the layout
+    renderSquiggles();
+    closeQuickfix();
   });
 
   $("btn-theme").addEventListener("click", openThemeEditor);
@@ -2587,6 +2848,24 @@ async function main() {
   setupExportMenu();
   // Test hook: lets headless checks invoke Share without a click/clipboard.
   window.__layraShare = shareLink;
+  // Test hooks for U21 inline diagnostics: read the current set, open a
+  // quick-fix for a given line, and apply the first available fix.
+  window.__layraDiag = {
+    get: () => diagnostics.slice(),
+    open: (line) => {
+      const d = diagnostics.find((x) => x.line === line) ?? diagnostics[0];
+      if (d) openQuickfix(d);
+      return !!d;
+    },
+    applyFirstFix: (line) => {
+      const d = diagnostics.find((x) => x.line === line) ?? diagnostics[0];
+      if (!d) return false;
+      const fixes = quickFixesFor(d);
+      if (!fixes.length) return false;
+      applyLineEdit(d.line, fixes[0].apply());
+      return true;
+    },
+  };
 
   // Keyboard: Tab/Shift+Tab indent in editor, Escape blurs;
   // +/−/0 zoom when focus is outside the editor.

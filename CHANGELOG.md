@@ -1,5 +1,51 @@
 # Changelog
 
+## v0.5.0 — "Ship-grade & correct"
+
+Correctness, diagram completeness, and the agent moat. Addresses real
+issues found by render-based review of v0.4.0 (class inheritance drawn
+upside down, text clipping, plain-text ER cardinality).
+
+### Engine
+- **Class diagram inheritance fixed**: UML generalization/composition/
+  aggregation now rank the parent/whole on the upper layer (parent on top,
+  child below) and draw the hollow triangle as a `marker-start` pointing up
+  to the parent — was upside down (child above parent) in v0.4.0
+- **Text clipping eliminated**: monospace class member rows were measured
+  with the proportional-sans table, so wide signatures overflowed the box;
+  a dedicated monospace measure + shared compartment geometry sizes every
+  box to `longest_row + 2*PAD_X`, and edge-label chips size from the
+  measured advance. Corpus-wide regression test asserts no label overflows
+- **Sequence diagrams**: activation bars stagger per nesting level (no more
+  overlap), messages attach to the facing bar edge, with loop/alt/opt/par
+  frames and autonumber — first sequence-renderer test module
+- **ER crow's-foot**: graphical cardinality (one bar / many three-prong
+  foot, plus optional circle / mandatory bar) replaces plain-text `1`/`0..*`;
+  PK/FK attribute markers retained
+
+### Playground
+- **Custom theme / brand**: 6 presets (Light, Dark, AWS, GCP, Azure,
+  Neutral) plus a custom theme editor (accent, font, background), persisted
+  and baked into exported SVG via `data-layra-theme`
+- **Live inline error UX**: squiggly underlines + gutter dots on offending
+  editor lines with clickable quick-fixes (insert arrow, close bracket,
+  comment out, delete) — no longer toast-only
+- **Advanced export**: PNG at 1x/2x/3x/4x (retina), copy-PNG-to-clipboard,
+  and full-bleed export that captures content dragged outside the viewport
+- **Onboarding tour**: first-visit guided coachmark tour (palette → drag →
+  export → share) with a complete keyboard-shortcut cheatsheet, remembered
+  in localStorage, replayable from the palette / Help / a floating button
+
+### Agent / MCP
+- **`list_icons`**: every bundled icon key (106) with service category +
+  accent color and a ready-to-paste `{icon:...}` ref
+- **`lint_diagram`**: structured quality warnings beyond parse errors —
+  orphan nodes, label overflow, line-numbered parse errors — so an agent
+  can self-correct. MCP now advertises 5 tools
+
+### Quality
+- 164 tests, 0 clippy warnings, blog corpus 25/25, versions in sync
+
 ## v0.4.0 — "Beautiful by default"
 
 A visual overhaul addressing real user feedback on v0.3.0 (monochrome

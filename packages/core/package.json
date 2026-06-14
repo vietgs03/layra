@@ -1,6 +1,6 @@
 {
   "name": "@vietgs03/layra",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Mermaid-compatible diagram renderer in Rust/WASM — layout in microseconds, 11 diagram types, inline icons",
   "license": "MIT",
   "repository": {

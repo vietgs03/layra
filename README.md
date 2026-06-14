@@ -10,6 +10,25 @@ Rust, compiled to WASM for the browser.
 parse → measure text → layout → route edges → render SVG
 ```
 
+## New in v0.5.0
+
+"Ship-grade & correct" — diagram correctness, completeness, and the agent moat:
+
+- **Class diagrams fixed**: UML inheritance now draws parent on top, child
+  below, triangle pointing up (was upside down)
+- **No more text clipping**: monospace class members and edge labels always
+  fit their box; corpus-wide regression test guards it
+- **Sequence diagrams**: staggered activation bars, loop/alt/opt/par frames,
+  autonumber
+- **ER crow's-foot** cardinality (one/many/optional) + PK/FK markers
+- **Playground**: custom theme/brand (AWS/GCP/Azure presets), inline error
+  squiggles + quick-fixes, PNG export 1-3x + clipboard + full-bleed,
+  first-visit onboarding tour
+- **MCP**: new `list_icons` (106 icons + categories) and `lint_diagram`
+  (orphan nodes, label overflow) tools — 5 agent tools total
+
+[Try the playground →](https://vietgs03.github.io/layra/)
+
 ## New in v0.4.0
 
 "Beautiful by default" — full-color AWS-architecture diagrams:
@@ -38,7 +57,8 @@ AWS-architecture-grade engine + a draw.io-class playground:
 - **Playground** ([try it](https://vietgs03.github.io/layra/)): minimap,
   drag-to-canvas, command palette (`Cmd/Ctrl+K`), category icon palette,
   diagram-type switcher, share links, export (SVG/PNG@1-4x), a11y, in-app help
-- **Agents**: MCP `validate_diagram` / `render_diagram` / `list_shapes`
+- **Agents**: MCP `validate_diagram` / `render_diagram` / `list_shapes` /
+  `list_icons` / `lint_diagram`
 
 ## Why
 
@@ -165,9 +185,11 @@ errors before you ever see them:
 claude mcp add layra -- layra mcp
 ```
 
-Tools: `validate_diagram` (per-line errors for the agent's fix loop) and
-`render_diagram` (SVG to disk). Plus `layra watch docs/` for editors
-without MCP and `layra render --check` as a CI gate.
+Tools: `validate_diagram` (per-line errors for the agent's fix loop),
+`render_diagram` (SVG to disk), `list_shapes` / `list_icons` (the visual
+vocabulary + 106 icons the engine renders), and `lint_diagram` (orphan
+nodes, label overflow). Plus `layra watch docs/` for editors without MCP
+and `layra render --check` as a CI gate.
 See [docs/AGENTS.md](docs/AGENTS.md).
 
 ## Consuming from JS / TypeScript

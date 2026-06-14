@@ -8,6 +8,10 @@
   --error: #dc2626;
   --ok: #059669;
   --dots: #e8eaf0;
+  /* Canvas + node polish tokens (U19). */
+  --canvas: #fbfcfe;
+  --node-shadow: drop-shadow(0 1px 1px rgba(15, 23, 42, 0.06)) drop-shadow(0 3px 8px rgba(15, 23, 42, 0.08));
+  --node-shadow-hover: drop-shadow(0 2px 3px rgba(15, 23, 42, 0.10)) drop-shadow(0 8px 18px rgba(15, 23, 42, 0.14));
 }
 :root.dark {
   --bg: #0f1115;
@@ -15,7 +19,12 @@
   --border: #2d3340;
   --text: #e5e9f0;
   --dim: #9ca3af;
-  --dots: #1d2129;
+  --accent: #60a5fa;
+  --dots: #1f2530;
+  /* A deeper, calmer dark canvas + glow-style node shadows. */
+  --canvas: #0c0e13;
+  --node-shadow: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.45)) drop-shadow(0 4px 12px rgba(0, 0, 0, 0.42));
+  --node-shadow-hover: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.55)) drop-shadow(0 10px 22px rgba(0, 0, 0, 0.5));
 }
 
 * { box-sizing: border-box; }
@@ -621,6 +630,7 @@ main { display: flex; flex: 1; min-height: 0; }
   inset: 0;
   overflow: hidden;
   cursor: grab;
+  background-color: var(--canvas);
   background-image: radial-gradient(var(--dots) 1.2px, transparent 1.2px);
   background-size: 22px 22px;
 }
@@ -725,6 +735,31 @@ body.dragging-palette { cursor: grabbing; user-select: none; -webkit-user-select
   /* Nodes dragged beyond the original viewBox must stay visible —
      SVG clips to its viewport by default. */
   overflow: visible;
+}
+
+/* ---------------- node & edge visual polish (U19) ---------------- */
+/* Subtle, draw.io/Excalidraw-grade depth: soft drop-shadows on every node,
+   smoothly mitred edge joins, and a tasteful lift on hover. Applied purely in
+   CSS over the engine's SVG so it works for every diagram type and theme. */
+#preview svg [data-node] {
+  filter: var(--node-shadow);
+  transition: filter 0.14s ease;
+}
+/* Cluster/subgraph containers read as flat surfaces, not floating cards. */
+#preview svg [data-node]:hover {
+  filter: var(--node-shadow-hover);
+}
+/* Round every stroked path's joins/caps so arrows and connectors look smooth
+   instead of hard-mitred. Cheap, universal, and reversible. */
+#preview svg [data-edge] path {
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+/* Node shape outlines get rounded joins too (diamonds, hexagons, cylinders). */
+#preview svg [data-node] path,
+#preview svg [data-node] polygon,
+#preview svg [data-node] rect {
+  stroke-linejoin: round;
 }
 
 .zoom-controls {

@@ -438,4 +438,77 @@ mod tests {
             "monochrome icons missing a category: {uncategorized:?}"
         );
     }
+
+    // ---- L11: icon set 47 -> 80+ ----
+
+    #[test]
+    fn bundled_set_has_at_least_80_icons() {
+        let reg = IconRegistry::with_builtins();
+        assert!(
+            reg.len() >= 80,
+            "bundled infra set must have 80+ icons, has {}",
+            reg.len()
+        );
+    }
+
+    #[test]
+    fn common_aws_services_are_present_and_categorized() {
+        // Spot-check the headline services called out in the roadmap so a
+        // future edit can't silently drop them.
+        let reg = IconRegistry::with_builtins();
+        let expect: &[(&str, IconCategory)] = &[
+            ("aws:ec2", IconCategory::Compute),
+            ("aws:fargate", IconCategory::Compute),
+            ("aws:eks", IconCategory::Compute),
+            ("aws:ecs", IconCategory::Compute),
+            ("aws:rds", IconCategory::Database),
+            ("aws:dynamodb", IconCategory::Database),
+            ("aws:elasticache", IconCategory::Database),
+            ("aws:sns", IconCategory::Integration),
+            ("aws:sqs", IconCategory::Integration),
+            ("aws:apigw", IconCategory::Network),
+            ("aws:elb", IconCategory::Network),
+            ("aws:route53", IconCategory::Network),
+            ("aws:nat", IconCategory::Network),
+            ("aws:igw", IconCategory::Network),
+            ("aws:cloudwatch", IconCategory::Management),
+            ("aws:cloudformation", IconCategory::Management),
+            ("aws:iam", IconCategory::Security),
+            ("aws:kms", IconCategory::Security),
+            ("aws:cognito", IconCategory::Security),
+            ("aws:kinesis", IconCategory::Analytics),
+            ("aws:redshift", IconCategory::Analytics),
+            ("aws:athena", IconCategory::Analytics),
+            ("aws:glue", IconCategory::Analytics),
+            ("aws:sagemaker", IconCategory::Analytics),
+        ];
+        for (key, cat) in expect {
+            let icon = reg
+                .get(key)
+                .unwrap_or_else(|| panic!("missing bundled icon {key}"));
+            assert!(
+                !icon.body.is_empty(),
+                "icon {key} must have a non-empty glyph body"
+            );
+            assert_eq!(reg.category(key), Some(*cat), "wrong category for {key}");
+        }
+    }
+
+    #[test]
+    fn new_icons_render_recognizable_colored_glyphs() {
+        // Each new service must emit a real path/glyph inside a colored tile.
+        let reg = IconRegistry::with_builtins();
+        for key in ["aws:rds", "aws:dynamodb", "aws:kinesis", "aws:cognito"] {
+            let svg = reg.emit_svg(key, 0.0, 0.0, 24.0, "#1a1d23").unwrap();
+            assert!(svg.contains("<rect"), "{key} must paint a category tile");
+            assert!(
+                svg.contains("<path") || svg.contains("<circle") || svg.contains("<g"),
+                "{key} must draw a recognizable glyph"
+            );
+            assert!(
+                !svg.contains("currentColor"),
+                "{key} must substitute currentColor"
+            );
+        }
+    }
 }

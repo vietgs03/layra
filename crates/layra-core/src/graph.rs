@@ -92,6 +92,12 @@ pub struct Subgraph {
     pub label: String,
     pub nodes: Vec<NodeId>,
     pub parent: Option<SubgraphId>,
+    /// Optional icon (e.g. `aws:vpc`). When set, the renderer styles the
+    /// container the AWS way: a colored dashed border in the icon's category
+    /// hue with a left-aligned corner header carrying the small glyph (the
+    /// VPC / Availability Zone / Region look).
+    #[serde(default)]
+    pub icon: Option<String>,
     /// Computed bounding box; filled by the layout stage.
     pub rect: Rect,
 }

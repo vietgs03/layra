@@ -57,6 +57,7 @@ fn two_level_nested_clusters_are_enclosed() {
         label: "Inner".into(),
         nodes: vec![a, b],
         parent: None, // set below
+        icon: None,
         rect: Default::default(),
     });
     let outer = g.add_subgraph(Subgraph {
@@ -64,6 +65,7 @@ fn two_level_nested_clusters_are_enclosed() {
         label: "Outer".into(),
         nodes: vec![hub], // direct member only; `inner` nests within
         parent: None,
+        icon: None,
         rect: Default::default(),
     });
     g.subgraphs[inner.index()].parent = Some(outer);

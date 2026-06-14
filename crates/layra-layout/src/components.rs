@@ -186,6 +186,7 @@ mod tests {
             label: "A".into(),
             nodes: vec![a1, a2],
             parent: None,
+            icon: None,
             rect: Default::default(),
         });
         let sgb = g.add_subgraph(Subgraph {
@@ -193,6 +194,7 @@ mod tests {
             label: "B".into(),
             nodes: vec![b1, b2],
             parent: None,
+            icon: None,
             rect: Default::default(),
         });
         g.nodes[a1.index()].parent = Some(sga);

@@ -44,6 +44,7 @@ fn cluster_members_are_contiguous_and_unswallowed() {
         label: "Cluster".into(),
         nodes: vec![in1, in2],
         parent: None,
+        icon: None,
         rect: Rect::default(),
     });
     g.nodes[in1.index()].parent = Some(sg);

@@ -178,11 +178,17 @@
           <dt><kbd>0</kbd></dt><dd>Fit to view</dd>
           <dt><kbd>D</kbd></dt><dd>Toggle light / dark</dd>
           <dt><kbd>A</kbd></dt><dd>Animate edges</dd>
+          <dt>Scroll</dt><dd>Zoom in / out at the cursor</dd>
           <dt><kbd>Space</kbd> + drag</dt><dd>Pan the canvas</dd>
+          <dt><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd></dt><dd>Pan when canvas is focused</dd>
           <dt>Drag a node</dt><dd>Reposition it</dd>
+          <dt>Drag from palette</dt><dd>Drop a shape onto the canvas</dd>
           <dt><kbd>Tab</kbd> in editor</dt><dd>Indent (Shift+Tab outdents)</dd>
           <dt><kbd>Esc</kbd></dt><dd>Close any overlay</dd>
         </dl>
+        <button id="tour-replay" class="tour-replay-btn" type="button">
+          <span aria-hidden="true">🧭</span> Take the guided tour
+        </button>
       </section>
       <section class="help-col">
         <h3>Syntax basics</h3>
@@ -256,6 +262,40 @@
   </div>
 </div>
 
+<!-- Onboarding tour (U23): a first-visit guided walk-through that spotlights the
+     palette → drag-to-canvas → export → share, one coachmark at a time. The
+     spotlight cut-out, coachmark and controls are positioned by app.js relative
+     to the real target element. Dismissible; remembered in localStorage
+     ("layra:onboarded") so it only auto-runs once. Replayable from the command
+     palette, the Help dialog, or the floating compass button. -->
+<div id="tour" class="tour" hidden aria-hidden="true">
+  <div class="tour-veil" id="tour-veil"></div>
+  <div class="tour-spot" id="tour-spot" aria-hidden="true"></div>
+  <div class="tour-coach" id="tour-coach" role="dialog" aria-modal="true"
+       aria-labelledby="tour-coach-title" aria-describedby="tour-coach-body">
+    <div class="tour-coach-arrow" id="tour-coach-arrow" aria-hidden="true"></div>
+    <div class="tour-coach-head">
+      <span class="tour-step-count" id="tour-step-count">1 / 4</span>
+      <button id="tour-skip" class="tour-skip" type="button" title="Skip the tour (Esc)">Skip ✕</button>
+    </div>
+    <h3 class="tour-coach-title" id="tour-coach-title">Title</h3>
+    <p class="tour-coach-body" id="tour-coach-body">Body</p>
+    <div class="tour-dots" id="tour-dots" aria-hidden="true"></div>
+    <div class="tour-coach-foot">
+      <button id="tour-back" class="tour-btn tour-btn-ghost" type="button">Back</button>
+      <button id="tour-next" class="tour-btn tour-btn-primary" type="button">Next →</button>
+    </div>
+  </div>
+</div>
+
+<!-- Floating "replay the tour" affordance: a small compass FAB anchored bottom-
+     left. Always available so the tour is discoverable after first visit. -->
+<button id="tour-fab" class="tour-fab" type="button" hidden
+        title="Take the guided tour" aria-label="Take the guided tour">
+  <span aria-hidden="true">🧭</span>
+</button>
+
 <script type="module" src="./app.js"></script>
+
 </body>
 </html>

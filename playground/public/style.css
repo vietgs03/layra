@@ -1594,3 +1594,180 @@ body.dragging-palette { cursor: grabbing; user-select: none; -webkit-user-select
   .theme-field { flex-direction: column; align-items: stretch; }
   .theme-field select, .theme-color-wrap { width: 100%; }
 }
+
+/* ---------------- onboarding tour (U23) ---------------- */
+/* A first-visit guided walk-through: a dimming veil with a bright spotlight
+   cut-out over the current target, plus a floating coachmark with Next/Skip.
+   The veil + spot + coach are positioned imperatively by app.js. */
+.tour {
+  position: fixed;
+  inset: 0;
+  z-index: 600;          /* above every dialog (help/theme/gallery/cmdk) */
+  pointer-events: none;  /* only interactive parts opt back in */
+}
+.tour[hidden] { display: none; }
+
+/* Full-screen scrim. Clicking it skips the tour. */
+.tour-veil {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, #0a0c10 30%, transparent);
+  backdrop-filter: blur(1px);
+  pointer-events: auto;
+  cursor: pointer;
+  animation: tour-fade 0.2s ease-out;
+}
+@keyframes tour-fade { from { opacity: 0; } }
+
+/* The spotlight: a transparent box whose enormous box-shadow paints the dim
+   over everything outside it, leaving the target crisp and highlighted. */
+.tour-spot {
+  position: absolute;
+  border-radius: 12px;
+  pointer-events: none;
+  box-shadow:
+    0 0 0 9999px color-mix(in srgb, #0a0c10 56%, transparent),
+    0 0 0 2px color-mix(in srgb, var(--accent) 70%, transparent),
+    0 0 22px 4px color-mix(in srgb, var(--accent) 40%, transparent);
+  transition: left 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+              top 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+              width 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+              height 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* The coachmark card. */
+.tour-coach {
+  position: absolute;
+  pointer-events: auto;
+  width: min(340px, calc(100vw - 32px));
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.38);
+  padding: 16px 18px 14px;
+  animation: tour-pop 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: left 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+              top 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes tour-pop { from { opacity: 0; transform: scale(0.96); } }
+
+/* Little arrow pointing from the coach toward the spotlight. */
+.tour-coach-arrow {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  transform: rotate(45deg);
+}
+.tour-coach[data-placement="right"] .tour-coach-arrow { border-right: none; border-top: none; }
+.tour-coach[data-placement="left"] .tour-coach-arrow { border-left: none; border-bottom: none; }
+.tour-coach[data-placement="bottom"] .tour-coach-arrow { border-bottom: none; border-right: none; }
+.tour-coach[data-placement="top"] .tour-coach-arrow { border-top: none; border-left: none; }
+
+.tour-coach-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.tour-step-count {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  text-transform: uppercase;
+}
+.tour-skip {
+  border: none;
+  background: none;
+  color: var(--dim);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 6px;
+}
+.tour-skip:hover { color: var(--text); }
+.tour-skip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tour-coach-title { margin: 0 0 6px; font-size: 16px; font-weight: 700; color: var(--text); letter-spacing: -0.01em; }
+.tour-coach-body { margin: 0 0 12px; font-size: 13px; line-height: 1.55; color: var(--dim); }
+
+.tour-dots { display: flex; gap: 6px; margin-bottom: 12px; }
+.tour-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--border);
+  transition: background 0.2s, transform 0.2s;
+}
+.tour-dot.active { background: var(--accent); transform: scale(1.25); }
+
+.tour-coach-foot { display: flex; justify-content: flex-end; gap: 8px; }
+.tour-btn {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 14px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+.tour-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tour-btn-ghost { background: var(--panel); color: var(--text); }
+.tour-btn-ghost:hover:not(:disabled) { border-color: var(--accent); }
+.tour-btn-ghost:disabled { opacity: 0.4; cursor: default; }
+.tour-btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.tour-btn-primary:hover { background: color-mix(in srgb, var(--accent) 85%, #000); }
+
+/* Floating "replay the tour" compass button (bottom-left of the viewport). */
+.tour-fab {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  z-index: 90;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s, border-color 0.15s, background 0.15s;
+}
+.tour-fab[hidden] { display: none; }
+.tour-fab:hover { transform: translateY(-2px) scale(1.05); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--panel)); }
+.tour-fab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* "Take the guided tour" button inside the Help dialog. */
+.tour-replay-btn {
+  margin-top: 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 9px;
+  border: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg));
+  color: var(--accent);
+  cursor: pointer;
+}
+.tour-replay-btn:hover { background: color-mix(in srgb, var(--accent) 18%, var(--bg)); }
+.tour-replay-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+@media (max-width: 760px) {
+  .tour-fab { left: 12px; bottom: 12px; }
+}

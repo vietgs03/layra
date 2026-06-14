@@ -22,8 +22,29 @@ const NOTE_LINE_H: f32 = 15.0;
 const MIN_COL_GAP: f32 = 70.0;
 const FRAME_PAD: f32 = 10.0;
 const ACTIVATION_W: f32 = 7.0;
+/// Horizontal stagger applied to each nested activation level so concurrent
+/// bars on the same lifeline read as a staircase instead of overlapping.
+const ACT_STAGGER: f32 = ACTIVATION_W / 2.0;
 const MARGIN: f32 = 16.0;
 const SELF_LOOP_W: f32 = 46.0;
+
+/// Attachment x for a message endpoint: the lifeline center when the
+/// participant is idle, otherwise the edge of its (possibly nested)
+/// activation bar facing `toward`. Level is the 0-based nesting depth of the
+/// relevant bar; `None` means no active bar (attach at the lifeline).
+fn bar_edge(center: f32, level: Option<usize>, toward: f32) -> f32 {
+    match level {
+        None => center,
+        Some(l) => {
+            let bx = center + l as f32 * ACT_STAGGER;
+            if toward >= bx {
+                bx + ACTIVATION_W / 2.0
+            } else {
+                bx - ACTIVATION_W / 2.0
+            }
+        }
+    }
+}
 
 pub fn render_sequence(d: &SequenceDiagram, theme: &Theme) -> String {
     if d.participants.is_empty() {
@@ -114,8 +135,24 @@ pub fn render_sequence(d: &SequenceDiagram, theme: &Theme) -> String {
     let mut body = String::with_capacity(8192);
     let mut frames: Vec<(FrameKind, String, f32)> = Vec::new();
     let mut frame_boxes: Vec<(FrameKind, String, f32, f32)> = Vec::new(); // kind, label, y0, y1
-    let mut active: Vec<(ParticipantId, f32)> = Vec::new(); // activation start
-    let mut activations: Vec<(usize, f32, f32)> = Vec::new(); // participant, y0, y1
+                                                                          // Active bars: (participant, y0, nesting level). Level = how many bars
+                                                                          // were already open on that participant when this one started, so nested
+                                                                          // activations stagger right instead of overlapping.
+    let mut active: Vec<(ParticipantId, f32, usize)> = Vec::new();
+    let mut activations: Vec<(usize, f32, f32, usize)> = Vec::new(); // participant, y0, y1, level
+
+    // Deepest currently-open activation level for `pid` (None = idle).
+    let level_of = |active: &[(ParticipantId, f32, usize)], pid: ParticipantId| {
+        active
+            .iter()
+            .filter(|(p, _, _)| *p == pid)
+            .map(|(_, _, l)| *l)
+            .max()
+    };
+    // Level the next bar opened on `pid` would occupy.
+    let next_level = |active: &[(ParticipantId, f32, usize)], pid: ParticipantId| {
+        active.iter().filter(|(p, _, _)| *p == pid).count()
+    };
 
     for item in &d.items {
         match item {
@@ -128,17 +165,33 @@ pub fn render_sequence(d: &SequenceDiagram, theme: &Theme) -> String {
                     lines.len() as f32 * MSG_LINE_H
                 };
 
+                // Endpoint attachment x: from the edge of the sender's open
+                // bar (if any) to the edge of the receiver's bar. When this
+                // message activates the receiver, the arrowhead lands on the
+                // NEW bar it is about to open.
+                let from_c = xs[m.from.index()];
+                let to_c = xs[m.to.index()];
+                let from_level = level_of(&active, m.from);
+                let to_level = if m.activate {
+                    Some(next_level(&active, m.to))
+                } else {
+                    level_of(&active, m.to)
+                };
+                let from_x = bar_edge(from_c, from_level, to_c);
+                let to_x = bar_edge(to_c, to_level, from_c);
+
                 if m.activate {
-                    active.push((m.to, y + text_h + 4.0));
+                    let lvl = next_level(&active, m.to);
+                    active.push((m.to, y + text_h + 4.0, lvl));
                 }
 
-                write_message(&mut body, d, m, &xs, y, &lines, theme);
+                write_message(&mut body, m, from_x, to_x, y, &lines, theme);
                 y += text_h + 14.0;
 
                 if m.deactivate {
-                    if let Some(pos) = active.iter().rposition(|(p, _)| *p == m.from) {
-                        let (p, y0) = active.remove(pos);
-                        activations.push((p.index(), y0, y));
+                    if let Some(pos) = active.iter().rposition(|(p, _, _)| *p == m.from) {
+                        let (p, y0, lvl) = active.remove(pos);
+                        activations.push((p.index(), y0, y, lvl));
                     }
                 }
             }
@@ -181,18 +234,21 @@ pub fn render_sequence(d: &SequenceDiagram, theme: &Theme) -> String {
                 }
                 y += 6.0;
             }
-            SeqItem::Activate(p) => active.push((*p, y)),
+            SeqItem::Activate(p) => {
+                let lvl = next_level(&active, *p);
+                active.push((*p, y, lvl));
+            }
             SeqItem::Deactivate(p) => {
-                if let Some(pos) = active.iter().rposition(|(q, _)| q == p) {
-                    let (q, y0) = active.remove(pos);
-                    activations.push((q.index(), y0, y));
+                if let Some(pos) = active.iter().rposition(|(q, _, _)| q == p) {
+                    let (q, y0, lvl) = active.remove(pos);
+                    activations.push((q.index(), y0, y, lvl));
                 }
             }
         }
     }
     // Close any dangling activations at the bottom.
-    for (p, y0) in active.drain(..) {
-        activations.push((p.index(), y0, y + 10.0));
+    for (p, y0, lvl) in active.drain(..) {
+        activations.push((p.index(), y0, y + 10.0, lvl));
     }
 
     let lifeline_bottom = y + 18.0;
@@ -265,9 +321,10 @@ pub fn render_sequence(d: &SequenceDiagram, theme: &Theme) -> String {
         );
     }
 
-    // Activation bars.
-    for (i, y0, y1) in &activations {
-        let x = xs[*i];
+    // Activation bars. Nested bars stagger right by ACT_STAGGER per level so
+    // concurrent activations on one lifeline read as a staircase.
+    for (i, y0, y1, level) in &activations {
+        let x = xs[*i] + *level as f32 * ACT_STAGGER;
         let _ = write!(
             svg,
             r#"<rect x="{:.1}" y="{y0:.1}" width="{ACTIVATION_W}" height="{:.1}" fill="{}" stroke="{}" stroke-width="1"/>"#,
@@ -311,15 +368,13 @@ pub fn render_sequence(d: &SequenceDiagram, theme: &Theme) -> String {
 
 fn write_message(
     out: &mut String,
-    _d: &SequenceDiagram,
     m: &SeqMessage,
-    xs: &[f32],
+    x0: f32,
+    x1: f32,
     y: f32,
     lines: &[&str],
     theme: &Theme,
 ) {
-    let x0 = xs[m.from.index()];
-    let x1 = xs[m.to.index()];
     let text_h = if m.text.is_empty() {
         0.0
     } else {
@@ -474,4 +529,128 @@ fn css_color(raw: &str, theme: &Theme) -> String {
         return theme.cluster_fill.to_string();
     }
     raw.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use layra_core::Document;
+    use layra_parser::parse_document_lenient;
+
+    fn seq(src: &str) -> SequenceDiagram {
+        let (doc, warnings) = parse_document_lenient(src);
+        assert!(warnings.is_empty(), "parse warnings: {warnings:?}");
+        match doc {
+            Document::Sequence(s) => s,
+            other => panic!("expected sequence, got {other:?}"),
+        }
+    }
+
+    /// Count `<rect width="7" ...>` activation bars and return their x lefts.
+    fn activation_xs(svg: &str) -> Vec<f32> {
+        svg.split("<rect")
+            .filter(|s| s.contains(r#"width="7""#))
+            .filter_map(|s| s.split("x=\"").nth(1)?.split('"').next()?.parse().ok())
+            .collect()
+    }
+
+    #[test]
+    fn activation_bars_render_from_plus_minus() {
+        let d = seq("sequenceDiagram\n  A->>+B: call\n  B-->>-A: ret");
+        let svg = render_sequence(&d, &Theme::light());
+        // One activation bar (B), 7px wide.
+        assert_eq!(activation_xs(&svg).len(), 1, "one activation bar expected");
+    }
+
+    #[test]
+    fn nested_activation_bars_stagger_not_overlap() {
+        // Two concurrent activations on B must not draw at the same x.
+        let d = seq("sequenceDiagram\n  participant A\n  participant B\n  \
+             A->>B: a\n  activate B\n  A->>B: b\n  activate B\n  \
+             B-->>A: r1\n  deactivate B\n  B-->>A: r2\n  deactivate B");
+        let svg = render_sequence(&d, &Theme::light());
+        let xs = activation_xs(&svg);
+        assert_eq!(xs.len(), 2, "two activation bars expected");
+        assert!(
+            (xs[0] - xs[1]).abs() >= ACT_STAGGER - 0.01,
+            "nested bars must stagger by at least {ACT_STAGGER}, got {xs:?}"
+        );
+    }
+
+    #[test]
+    fn explicit_activate_deactivate_render() {
+        let d = seq("sequenceDiagram\n  A->>B: go\n  activate B\n  B-->>A: ok\n  deactivate B");
+        let svg = render_sequence(&d, &Theme::light());
+        assert_eq!(activation_xs(&svg).len(), 1);
+    }
+
+    #[test]
+    fn loop_alt_opt_par_frames_render_labels() {
+        let d = seq("sequenceDiagram\n  A->>B: x\n  \
+             loop retry\n    A->>B: y\n  end\n  \
+             alt ok\n    B-->>A: 200\n  else fail\n    B-->>A: 500\n  end\n  \
+             opt maybe\n    A->>B: z\n  end\n  \
+             par work\n    A->>B: p\n  end");
+        let svg = render_sequence(&d, &Theme::light());
+        assert!(svg.contains(">loop<"), "loop frame tag");
+        assert!(svg.contains(">alt<"), "alt frame tag");
+        assert!(svg.contains(">opt<"), "opt frame tag");
+        assert!(svg.contains(">par<"), "par frame tag");
+        // alt else divider present.
+        assert!(
+            svg.contains(r#"stroke-dasharray="4 3""#),
+            "alt else divider line"
+        );
+        assert!(svg.contains("[fail]"), "else label rendered");
+    }
+
+    #[test]
+    fn autonumber_prefixes_messages() {
+        let d = seq("sequenceDiagram\n  autonumber\n  A->>B: first\n  B-->>A: second");
+        assert!(d.autonumber);
+        let svg = render_sequence(&d, &Theme::light());
+        // Numbers render as bold tspans, one per message.
+        assert_eq!(svg.matches("<tspan").count(), 2, "two numbered messages");
+        assert!(svg.contains(">1</tspan>"));
+        assert!(svg.contains(">2</tspan>"));
+    }
+
+    #[test]
+    fn without_autonumber_no_numbers() {
+        let d = seq("sequenceDiagram\n  A->>B: hi");
+        let svg = render_sequence(&d, &Theme::light());
+        assert!(!svg.contains("<tspan"), "no numbering without autonumber");
+    }
+
+    #[test]
+    fn message_attaches_to_activation_bar_edge() {
+        // When B is active, an arrow from A to B must land on the bar's left
+        // edge (center - ACTIVATION_W/2), not at the lifeline center.
+        let d = seq("sequenceDiagram\n  participant A\n  participant B\n  A->>+B: call");
+        let svg = render_sequence(&d, &Theme::light());
+        let bar_x = activation_xs(&svg)[0]; // left edge of the 7px bar
+        let bar_edge_x = bar_x; // x= of rect == left edge
+                                // The message <line> x2 should equal the bar's near edge, well left
+                                // of the lifeline center (bar_left + 3.5).
+        let center = bar_edge_x + ACTIVATION_W / 2.0;
+        let x2: f32 = svg
+            .split("<line")
+            .find(|s| s.contains("marker-end"))
+            .and_then(|s| s.split("x2=\"").nth(1)?.split('"').next()?.parse().ok())
+            .unwrap();
+        assert!(
+            (x2 - bar_edge_x).abs() < 0.6,
+            "arrow x2 {x2} should hit bar edge {bar_edge_x} (center {center})"
+        );
+    }
+
+    #[test]
+    fn bar_edge_helper_picks_facing_side() {
+        // Idle: attach at center.
+        assert_eq!(bar_edge(100.0, None, 200.0), 100.0);
+        // Active, partner to the right: attach at right edge.
+        assert_eq!(bar_edge(100.0, Some(0), 200.0), 100.0 + ACTIVATION_W / 2.0);
+        // Active, partner to the left: attach at left edge.
+        assert_eq!(bar_edge(100.0, Some(0), 10.0), 100.0 - ACTIVATION_W / 2.0);
+    }
 }

@@ -1369,15 +1369,19 @@ function insertNodeText(raw) {
 // Infra icon categories, in display order. The build's infra-icons.json may
 // grow to ~46 icons; we read an explicit `category` field when present and
 // otherwise classify by keyword so new icons still group sensibly.
+// `color` matches the AWS service palette (and the engine's role hues): icons
+// drawn with `currentColor` pick this up; L9's multi-color icons keep their own
+// fills, so the palette lights up correctly either way (never hardcoded grey).
 const INFRA_CATEGORIES = [
-  { id: "compute",   title: "Compute" },
-  { id: "storage",   title: "Storage" },
-  { id: "database",  title: "Database" },
-  { id: "network",   title: "Network" },
-  { id: "messaging", title: "Messaging" },
-  { id: "security",  title: "Security" },
-  { id: "other",     title: "Other" },
+  { id: "compute",   title: "Compute",   color: "#ed7100" }, // AWS compute orange
+  { id: "storage",   title: "Storage",   color: "#7aa116" }, // AWS storage green
+  { id: "database",  title: "Database",  color: "#2563eb" }, // database blue
+  { id: "network",   title: "Network",   color: "#8c4fff" }, // AWS networking purple
+  { id: "messaging", title: "Messaging", color: "#e7157b" }, // AWS app-integration pink
+  { id: "security",  title: "Security",  color: "#dd344c" }, // AWS security red
+  { id: "other",     title: "Other",     color: "#64748b" }, // neutral slate
 ];
+const INFRA_CAT_COLOR = Object.fromEntries(INFRA_CATEGORIES.map((c) => [c.id, c.color]));
 
 // Keyword → category heuristic (first match wins, checked against the icon
 // name + label). Used only when the icon has no explicit `category` field.
@@ -1397,15 +1401,20 @@ function categorizeInfra(key, def) {
   return "other";
 }
 
-// Create one draggable palette tile for an infra icon.
-function infraTile(key, def, n) {
+// Create one draggable palette tile for an infra icon, tinted by its category
+// color. The glyph inherits `color` (so single-color `currentColor` icons take
+// the category hue) while L9's multi-color icons keep their own fills.
+function infraTile(key, def, n, cat) {
   const name = key.split(":")[1];            // e.g. "lambda"
   const id = name.replace(/[^a-z0-9]/g, ""); // node id base, e.g. "loadbalancer"
   const label = def.label ?? name;
+  const color = INFRA_CAT_COLOR[cat] ?? INFRA_CAT_COLOR.other;
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "palette-icon";
   btn.draggable = true;
+  btn.dataset.cat = cat;
+  btn.style.setProperty("--cat", color);
   btn.title = `Insert {icon:${key}} ${label} · click or drag to canvas`;
   // Unique node id per insertion so repeated clicks don't collide.
   btn.dataset.snip = `${id}${n}["{icon:${key}} ${label}"]`;
@@ -1413,7 +1422,14 @@ function infraTile(key, def, n) {
   const svg =
     `<svg viewBox="0 0 ${def.width} ${def.height}" width="22" height="22" ` +
     `xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${def.body}</svg>`;
-  btn.innerHTML = `<span class="pi-icon">${svg}</span><span class="pi-name">${label}</span>`;
+  // A larger preview glyph is shown in a popover on hover (see CSS).
+  btn.innerHTML =
+    `<span class="pi-icon">${svg}</span>` +
+    `<span class="pi-name">${label}</span>` +
+    `<span class="pi-preview" aria-hidden="true">` +
+      `<span class="pi-preview-glyph">${svg}</span>` +
+      `<span class="pi-preview-label">${label}</span>` +
+    `</span>`;
   return btn;
 }
 
@@ -1446,11 +1462,14 @@ async function buildInfraPalette() {
     if (!entries || !entries.length) continue;
     const head = document.createElement("div");
     head.className = "palette-cat-title";
-    head.textContent = cat.title;
+    head.dataset.cat = cat.id;
+    head.style.setProperty("--cat", cat.color);
+    // A colored dot + label so each category reads at a glance.
+    head.innerHTML = `<span class="palette-cat-dot" aria-hidden="true"></span>${cat.title}`;
     frag.appendChild(head);
     const grid = document.createElement("div");
     grid.className = "palette-icon-grid";
-    for (const [key, def] of entries) grid.appendChild(infraTile(key, def, n++));
+    for (const [key, def] of entries) grid.appendChild(infraTile(key, def, n++, cat.id));
     frag.appendChild(grid);
   }
   host.replaceChildren(frag);

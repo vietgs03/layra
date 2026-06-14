@@ -11,3 +11,8 @@ authors.workspace = true
 layra-core = { workspace = true }
 layra-icons = { workspace = true }
 layra-text = { workspace = true }
+
+[dev-dependencies]
+# Integration tests build IR straight from Mermaid source; the parser only
+# depends on layra-core, so this dev-dep stays acyclic.
+layra-parser = { workspace = true }

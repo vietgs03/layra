@@ -2678,6 +2678,7 @@ const COMMANDS = [
   { id: "toggle-animate", title: "Animate edges", desc: "March the dashes on edges", hint: "A", icon: "⇝", run: () => toggleAnimateEdges() },
   { id: "examples", title: "Open examples gallery", icon: "✦", run: () => openGallery() },
   { id: "help", title: "Help & keyboard shortcuts", hint: "?", icon: "?", run: () => openHelp() },
+  { id: "tour", title: "Take the guided tour", desc: "Replay the first-visit walk-through", icon: "🧭", run: () => startTour(true) },
   { id: "star", title: "Star Layra on GitHub", icon: "★", run: () => window.open("https://github.com/vietgs03/layra", "_blank", "noopener") },
   { id: "share", title: "Copy shareable link", icon: "↗", run: () => shareLink() },
 ];
@@ -2820,6 +2821,232 @@ async function loadFromHash() {
   return true;
 }
 
+/* ---------------- onboarding tour (U23) ---------------- */
+// A first-visit interactive walk-through that spotlights the four pillars of
+// the playground — the palette, drag-to-canvas, export, and share — one
+// coachmark at a time. The tour is dismissible and remembered in localStorage
+// (TOUR_KEY) so it only auto-runs once; it can be replayed any time from the
+// command palette, the Help dialog, or the floating compass button.
+
+const TOUR_KEY = "layra:onboarded";
+
+// Expand the palette so its highlight makes sense (it may be collapsed on
+// narrow viewports or by a prior preference). Non-persistent: we don't write
+// the collapse pref, so the user's choice survives the tour.
+function tourExpandPalette() {
+  if (palette.classList.contains("collapsed")) {
+    palette.classList.remove("collapsed");
+    const t = $("palette-toggle");
+    t.setAttribute("aria-expanded", "true");
+    t.textContent = "⊟";
+  }
+}
+
+const TOUR_STEPS = [
+  {
+    id: "palette",
+    target: "palette",
+    placement: "right",
+    title: "The shape & icon palette",
+    body: "Browse shapes, connectors and 100+ cloud / infra icons here. Click any item to insert it at your cursor in the editor.",
+    prep: tourExpandPalette,
+  },
+  {
+    id: "drag",
+    target: "viewport",
+    placement: "left",
+    title: "Drag straight onto the canvas",
+    body: "Prefer pointing? Drag any palette item and drop it onto the canvas to place a node exactly where you want it. Drag nodes to reposition, scroll to zoom.",
+    prep: tourExpandPalette,
+  },
+  {
+    id: "export",
+    target: "export-menu",
+    placement: "bottom",
+    title: "Export your diagram",
+    body: "Download crisp SVG, or PNG at 1× / 2× / 3× for retina, and full-bleed exports that include everything beyond the viewport. You can also copy the image straight to your clipboard.",
+  },
+  {
+    id: "share",
+    target: "btn-share",
+    placement: "bottom",
+    title: "Share a live link",
+    body: "Copy a shareable link that encodes your entire diagram in the URL — no account, no upload. Anyone who opens it lands on an editable copy.",
+  },
+];
+
+let tourActive = false;
+let tourIndex = 0;
+const tour = $("tour");
+const tourCoach = $("tour-coach");
+const tourSpot = $("tour-spot");
+const tourArrow = $("tour-coach-arrow");
+let tourLastFocus = null;
+
+function tourMarkOnboarded() {
+  try { localStorage.setItem(TOUR_KEY, "1"); } catch { /* private mode */ }
+}
+
+function isOnboarded() {
+  try { return localStorage.getItem(TOUR_KEY) === "1"; } catch { return false; }
+}
+
+// Resolve the live DOM element a step points at (always re-query: the layout
+// may have changed, e.g. the palette being expanded by a prep step).
+function tourTarget(step) {
+  return $(step.target);
+}
+
+// Position the spotlight cut-out + coachmark relative to the current target.
+// Re-run on resize/scroll so the tour tracks layout changes.
+function positionTour() {
+  if (!tourActive) return;
+  const step = TOUR_STEPS[tourIndex];
+  const el = tourTarget(step);
+  if (!el) return;
+  const r = el.getBoundingClientRect();
+  const pad = step.pad ?? 8;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+
+  // Spotlight: a padded box over the target; its big box-shadow dims the rest.
+  tourSpot.style.left = `${Math.max(0, r.left - pad)}px`;
+  tourSpot.style.top = `${Math.max(0, r.top - pad)}px`;
+  tourSpot.style.width = `${Math.min(vw, r.width + pad * 2)}px`;
+  tourSpot.style.height = `${Math.min(vh, r.height + pad * 2)}px`;
+
+  // Measure the coach now that its content is set.
+  const cw = tourCoach.offsetWidth;
+  const ch = tourCoach.offsetHeight;
+  const gap = 16;
+  const margin = 12;
+  let placement = step.placement;
+
+  // Auto-flip if the preferred side would overflow the viewport.
+  if (placement === "right" && r.right + gap + cw > vw - margin) placement = "left";
+  else if (placement === "left" && r.left - gap - cw < margin) placement = "right";
+  if (placement === "bottom" && r.bottom + gap + ch > vh - margin) placement = "top";
+  else if (placement === "top" && r.top - gap - ch < margin) placement = "bottom";
+
+  let left, top;
+  if (placement === "right" || placement === "left") {
+    left = placement === "right" ? r.right + gap : r.left - gap - cw;
+    top = r.top + r.height / 2 - ch / 2;
+  } else {
+    top = placement === "bottom" ? r.bottom + gap : r.top - gap - ch;
+    left = r.left + r.width / 2 - cw / 2;
+  }
+  // Clamp into the viewport.
+  left = Math.max(margin, Math.min(left, vw - cw - margin));
+  top = Math.max(margin, Math.min(top, vh - ch - margin));
+  tourCoach.style.left = `${left}px`;
+  tourCoach.style.top = `${top}px`;
+
+  // Point the arrow at the target from the coach edge facing it.
+  tourCoach.dataset.placement = placement;
+  const targetCx = r.left + r.width / 2;
+  const targetCy = r.top + r.height / 2;
+  if (placement === "right" || placement === "left") {
+    const ay = Math.max(14, Math.min(targetCy - top, ch - 14));
+    tourArrow.style.top = `${ay}px`;
+    tourArrow.style.left = placement === "right" ? "-6px" : `${cw - 6}px`;
+  } else {
+    const ax = Math.max(16, Math.min(targetCx - left, cw - 16));
+    tourArrow.style.left = `${ax}px`;
+    tourArrow.style.top = placement === "bottom" ? "-6px" : `${ch - 6}px`;
+  }
+}
+
+function renderTourStep() {
+  const step = TOUR_STEPS[tourIndex];
+  step.prep?.();
+  $("tour-step-count").textContent = `${tourIndex + 1} / ${TOUR_STEPS.length}`;
+  $("tour-coach-title").textContent = step.title;
+  $("tour-coach-body").textContent = step.body;
+  $("tour-back").disabled = tourIndex === 0;
+  $("tour-next").textContent = tourIndex === TOUR_STEPS.length - 1 ? "Done ✓" : "Next →";
+
+  // Progress dots.
+  const dots = $("tour-dots");
+  dots.replaceChildren();
+  for (let i = 0; i < TOUR_STEPS.length; i++) {
+    const d = document.createElement("span");
+    d.className = "tour-dot" + (i === tourIndex ? " active" : "");
+    dots.appendChild(d);
+  }
+
+  // Bring the target into view if it's scrolled off, then position the coach.
+  tourTarget(step)?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  requestAnimationFrame(positionTour);
+}
+
+function startTour(fromUser = true) {
+  if (tourActive) return;
+  // Never stack over another overlay.
+  if (!cmdk.hidden) closeCmdk();
+  if (!help.hidden) closeHelp();
+  if (!gallery.hidden) closeGallery();
+  tourActive = true;
+  tourIndex = 0;
+  tourLastFocus = document.activeElement;
+  tour.hidden = false;
+  tour.setAttribute("aria-hidden", "false");
+  renderTourStep();
+  requestAnimationFrame(() => $("tour-next").focus());
+}
+
+// Close the tour. `completed` marks it as fully seen; either way we remember
+// the user has been onboarded so it never auto-runs again.
+function endTour(completed) {
+  if (!tourActive) return;
+  tourActive = false;
+  tour.hidden = true;
+  tour.setAttribute("aria-hidden", "true");
+  tourMarkOnboarded();
+  tourLastFocus?.focus?.();
+  if (completed) showToast("Tour complete — replay any time from the 🧭 button or ⌘K");
+}
+
+function tourNext() {
+  if (!tourActive) return;
+  if (tourIndex >= TOUR_STEPS.length - 1) { endTour(true); return; }
+  tourIndex++;
+  renderTourStep();
+}
+
+function tourBack() {
+  if (!tourActive || tourIndex === 0) return;
+  tourIndex--;
+  renderTourStep();
+}
+
+$("tour-next").addEventListener("click", tourNext);
+$("tour-back").addEventListener("click", tourBack);
+$("tour-skip").addEventListener("click", () => endTour(false));
+$("tour-veil").addEventListener("click", () => endTour(false));
+$("tour-fab").addEventListener("click", () => startTour(true));
+$("tour-replay").addEventListener("click", () => { closeHelp(); startTour(true); });
+
+// Keyboard within the tour: Esc skips, ←/→ navigate, Enter/Space advance.
+// A focus trap keeps Tab on the coach controls.
+tour.addEventListener("keydown", (e) => {
+  if (!tourActive) return;
+  if (e.key === "Escape") { e.preventDefault(); endTour(false); }
+  else if (e.key === "ArrowRight") { e.preventDefault(); tourNext(); }
+  else if (e.key === "ArrowLeft") { e.preventDefault(); tourBack(); }
+  else if (e.key === "Tab") {
+    const focusable = tourCoach.querySelectorAll("button:not([disabled])");
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  }
+});
+
+window.addEventListener("resize", positionTour);
+window.addEventListener("scroll", positionTour, true);
+
 /* ---------------- boot ---------------- */
 
 // Hide the WASM loading overlay (fade out, then remove from the DOM so it
@@ -2876,10 +3103,19 @@ async function main() {
   // Engine is ready and the first frame is painted: drop the loading overlay.
   hideBoot();
 
-  // Onboarding: open the examples gallery on a truly fresh start (no shared
-  // link, no autosaved work) or whenever the editor is empty.
-  if (!fromHash && (!saved || !saved.trim())) {
+  // Onboarding: a first-visit guided tour takes priority. On a truly fresh
+  // start (no shared link, no autosaved work) we instead open the examples
+  // gallery. We never stack the two.
+  const wantsTour = !isOnboarded();
+  if (!fromHash && (!saved || !saved.trim()) && !wantsTour) {
     openGallery();
+  }
+  // The replay affordance is always available once booted.
+  $("tour-fab").hidden = false;
+  // Auto-run the tour exactly once on first visit. Defer a touch so the
+  // layout (and any palette expansion) has settled before we measure targets.
+  if (wantsTour) {
+    setTimeout(() => startTour(false), 450);
   }
 
   editor.addEventListener("input", scheduleRender);
@@ -2932,6 +3168,19 @@ async function main() {
     pngBlob: (scale = 2) =>
       new Promise((resolve) => rasterizePng(scale, (blob) => resolve(blob))),
   };
+  // Test hook for U23 onboarding tour: query/drive tour state from headless
+  // checks without simulating clicks.
+  window.__layraTour = {
+    active: () => tourActive,
+    index: () => tourIndex,
+    steps: () => TOUR_STEPS.map((s) => s.id),
+    onboarded: () => isOnboarded(),
+    start: () => startTour(true),
+    next: () => tourNext(),
+    back: () => tourBack(),
+    skip: () => endTour(false),
+    finish: () => endTour(true),
+  };
 
   // Keyboard: Tab/Shift+Tab indent in editor, Escape blurs;
   // +/−/0 zoom when focus is outside the editor.
@@ -2967,6 +3216,8 @@ async function main() {
 
   window.addEventListener("keydown", (e) => {
     if (document.activeElement === editor) return;
+    // The tour owns the keyboard while it's open (its own handler drives nav).
+    if (tourActive) return;
     const center = [viewport.clientWidth / 2, viewport.clientHeight / 2];
     if (e.key === "+" || e.key === "=") smoothZoom(...center, 1.25);
     else if (e.key === "-") smoothZoom(...center, 1 / 1.25);

@@ -271,9 +271,101 @@ const TYPE_LABELS = {
   git: "Git",
 };
 
-let dark = matchMedia("(prefers-color-scheme: dark)").matches;
 let lastGoodSvg = "";
 let rafPending = false;
+
+/* ---------------- theme / brand (U20) ---------------- */
+// Layra ships two base palettes (light/dark, baked into the engine SVG via the
+// `dark` boolean) plus brand presets and a fully custom theme. A theme is
+// {base, accent, font, bg}; the playground maps it onto CSS custom properties
+// for the chrome + canvas, and bakes font/background into exported SVG so a
+// shared diagram keeps its look. The choice is persisted in localStorage.
+
+const THEME_KEY = "layra-theme";
+
+// Named font stacks the theme editor can pick from (keys are persisted).
+const FONTS = {
+  inter:   { label: "Inter (default)", stack: "Inter, 'Helvetica Neue', Arial, sans-serif" },
+  system:  { label: "System UI",       stack: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" },
+  rounded: { label: "Rounded",         stack: "'Trebuchet MS', 'Segoe UI', Verdana, sans-serif" },
+  serif:   { label: "Serif",           stack: "Georgia, 'Times New Roman', serif" },
+  mono:    { label: "Monospace",       stack: "ui-monospace, 'SF Mono', Menlo, Consolas, monospace" },
+};
+const fontStack = (key) => (FONTS[key] ?? FONTS.inter).stack;
+
+// Preset themes. `base` selects the engine palette (drives the `dark` bool);
+// `accent` tints UI chrome + the canvas; `bg` is baked into exports.
+const THEMES = {
+  light:   { name: "Light",   base: "light", accent: "#3b82f6", font: "inter",   bg: "#ffffff", builtin: true },
+  dark:    { name: "Dark",    base: "dark",  accent: "#60a5fa", font: "inter",   bg: "#0f1115", builtin: true },
+  aws:     { name: "AWS",     base: "light", accent: "#ff9900", font: "inter",   bg: "#fbf8f3" },
+  gcp:     { name: "GCP",     base: "light", accent: "#1a73e8", font: "rounded", bg: "#f6f9fe" },
+  azure:   { name: "Azure",   base: "dark",  accent: "#2899f5", font: "inter",   bg: "#0a1626" },
+  neutral: { name: "Neutral", base: "light", accent: "#475569", font: "system",  bg: "#fafaf9" },
+};
+const THEME_ORDER = ["light", "dark", "aws", "gcp", "azure", "neutral"];
+
+// Active selection: a preset id, or "custom" backed by `customTheme`.
+let themeId = "light";
+let customTheme = { base: "light", accent: "#7c5cff", font: "inter", bg: "#ffffff" };
+
+function loadThemePref() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(THEME_KEY) ?? "null");
+    if (raw && typeof raw === "object") {
+      if (raw.custom && typeof raw.custom === "object") {
+        customTheme = { ...customTheme, ...raw.custom };
+      }
+      if (raw.id && (raw.id === "custom" || THEMES[raw.id])) themeId = raw.id;
+      return;
+    }
+  } catch { /* fall through to first-run default */ }
+  // First run: honour the OS preference for light vs dark.
+  themeId = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+loadThemePref();
+
+function saveThemePref() {
+  localStorage.setItem(THEME_KEY, JSON.stringify({ id: themeId, custom: customTheme }));
+}
+
+// The resolved active theme as a normalized object (always has id/name/base/
+// accent/font/bg with a concrete font *stack*).
+function resolveTheme() {
+  const t = themeId === "custom" ? { ...customTheme, name: "Custom" } : THEMES[themeId] ?? THEMES.light;
+  return {
+    id: themeId,
+    name: t.name ?? "Custom",
+    base: t.base === "dark" ? "dark" : "light",
+    accent: t.accent || "#3b82f6",
+    fontKey: t.font || "inter",
+    font: fontStack(t.font),
+    bg: t.bg || (t.base === "dark" ? "#0f1115" : "#ffffff"),
+  };
+}
+
+// Mirrors the engine palette switch; `true` => the dark engine SVG.
+let dark = resolveTheme().base === "dark";
+
+// Mix two #rrggbb colors by `amt` (0..1) toward `b`.
+function mixHex(a, b, amt) {
+  const pa = parseHex(a), pb = parseHex(b);
+  if (!pa || !pb) return a;
+  const m = (x, y) => Math.round(x + (y - x) * amt);
+  const h = (n) => n.toString(16).padStart(2, "0");
+  return `#${h(m(pa[0], pb[0]))}${h(m(pa[1], pb[1]))}${h(m(pa[2], pb[2]))}`;
+}
+function parseHex(s) {
+  const m = /^#([0-9a-f]{6})$/i.exec((s || "").trim());
+  if (!m) {
+    const m3 = /^#([0-9a-f]{3})$/i.exec((s || "").trim());
+    if (!m3) return null;
+    const [r, g, b] = m3[1].split("");
+    return [parseInt(r + r, 16), parseInt(g + g, 16), parseInt(b + b, 16)];
+  }
+  const h = m[1];
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+}
 
 /* ---------------- animated edges ---------------- */
 // A persisted toggle that marches the dashes on the rendered edge paths via a
@@ -692,20 +784,180 @@ async function decodeSource(hash) {
 /* ---------------- rendering ---------------- */
 
 function applyTheme() {
-  document.documentElement.classList.toggle("dark", dark);
+  const t = resolveTheme();
+  dark = t.base === "dark";
+  const root = document.documentElement;
+  root.classList.toggle("dark", dark);
+  // Tint the chrome: accent everywhere, and a per-base derivation of the canvas
+  // and dot grid so brand themes feel cohesive (custom CSS props override the
+  // light/dark defaults from style.css).
+  root.style.setProperty("--accent", t.accent);
+  root.style.setProperty("--app-font", t.font);
+  // Canvas background comes straight from the theme; the dot grid is a subtle
+  // mix toward the accent so brand colour reads on the canvas too.
+  root.style.setProperty("--canvas", t.bg);
+  root.style.setProperty("--dots", mixHex(t.bg, t.accent, dark ? 0.16 : 0.12));
+  // Keep an attribute so CSS / tests can see the active theme id.
+  root.dataset.theme = t.id;
+
   const btn = $("btn-theme");
   if (btn) {
     btn.setAttribute("aria-pressed", String(dark));
-    btn.title = dark ? "Switch to light mode (D)" : "Switch to dark mode (D)";
+    btn.title = `Theme: ${t.name} — click to open the theme editor`;
+    btn.setAttribute("aria-label", `Theme: ${t.name}. Open theme editor`);
+  }
+  syncThemeEditor();
+}
+
+// Quick light/dark flip from the "D" shortcut: jump between the two base
+// palettes without leaving a brand preset stuck on the wrong base.
+function toggleTheme() {
+  if (themeId === "dark") setTheme("light");
+  else if (themeId === "light") setTheme("dark");
+  else {
+    // On a brand/custom theme: flip just the base and re-render.
+    if (themeId === "custom") customTheme.base = dark ? "light" : "dark";
+    else {
+      // Switch to the nearest base preset to avoid mutating a builtin.
+      setTheme(dark ? "light" : "dark");
+      return;
+    }
+    saveThemePref();
+    applyTheme();
+    scheduleRender();
   }
 }
 
-// Flip the theme and re-render (icons/colours are theme-aware). Shared by the
-// header toggle, the "D" shortcut, and the command palette.
-function toggleTheme() {
-  dark = !dark;
+// Apply + persist a named theme (preset id or "custom") and re-render so the
+// engine SVG picks up the matching light/dark palette.
+function setTheme(id) {
+  themeId = id;
+  saveThemePref();
   applyTheme();
   scheduleRender();
+}
+
+/* ---------------- theme editor dialog (U20) ---------------- */
+
+const themeDialog = $("theme");
+let themeLastFocus = null;
+let themeEditorBuilt = false;
+
+// Build the preset swatch grid + font picker once.
+function buildThemeEditor() {
+  if (themeEditorBuilt) return;
+  const presets = $("theme-presets");
+  const frag = document.createDocumentFragment();
+  for (const id of THEME_ORDER) {
+    const t = THEMES[id];
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "theme-preset";
+    btn.dataset.theme = id;
+    btn.setAttribute("role", "radio");
+    btn.title = `${t.name} theme`;
+    btn.innerHTML =
+      `<span class="theme-swatch" style="background:${t.bg}">` +
+      `<span class="theme-swatch-dot" style="background:${t.accent}"></span></span>` +
+      `<span class="theme-preset-name">${t.name}</span>`;
+    btn.addEventListener("click", () => setTheme(id));
+    frag.appendChild(btn);
+  }
+  presets.replaceChildren(frag);
+
+  const fontSel = $("theme-font");
+  fontSel.replaceChildren();
+  for (const [key, def] of Object.entries(FONTS)) {
+    const opt = document.createElement("option");
+    opt.value = key;
+    opt.textContent = def.label;
+    fontSel.appendChild(opt);
+  }
+
+  // Editing any control switches to the "custom" theme, seeded from the
+  // currently-resolved theme so tweaks start from what's on screen.
+  const startCustom = () => {
+    if (themeId !== "custom") {
+      const cur = resolveTheme();
+      customTheme = { base: cur.base, accent: cur.accent, font: cur.fontKey, bg: cur.bg };
+      themeId = "custom";
+    }
+  };
+  const accent = $("theme-accent");
+  const accentHex = $("theme-accent-hex");
+  const bg = $("theme-bg");
+  const bgHex = $("theme-bg-hex");
+  const base = $("theme-base");
+
+  const onAccent = (val) => {
+    if (!parseHex(val)) return;
+    startCustom();
+    customTheme.accent = val.toLowerCase();
+    saveThemePref();
+    applyTheme();
+  };
+  const onBg = (val) => {
+    if (!parseHex(val)) return;
+    startCustom();
+    customTheme.bg = val.toLowerCase();
+    saveThemePref();
+    applyTheme();
+  };
+  accent.addEventListener("input", (e) => onAccent(e.target.value));
+  accentHex.addEventListener("input", (e) => onAccent(e.target.value));
+  bg.addEventListener("input", (e) => onBg(e.target.value));
+  bgHex.addEventListener("input", (e) => onBg(e.target.value));
+  base.addEventListener("change", (e) => {
+    startCustom();
+    customTheme.base = e.target.value === "dark" ? "dark" : "light";
+    saveThemePref();
+    applyTheme();
+    scheduleRender();
+  });
+  fontSel.addEventListener("change", (e) => {
+    startCustom();
+    customTheme.font = e.target.value;
+    saveThemePref();
+    applyTheme();
+  });
+  themeEditorBuilt = true;
+}
+
+// Reflect the active theme into the editor controls + preset selection.
+function syncThemeEditor() {
+  const presets = $("theme-presets");
+  if (presets) {
+    for (const b of presets.querySelectorAll(".theme-preset")) {
+      const on = b.dataset.theme === themeId;
+      b.classList.toggle("active", on);
+      b.setAttribute("aria-checked", String(on));
+    }
+  }
+  const t = resolveTheme();
+  const set = (id, v) => { const el = $(id); if (el && document.activeElement !== el) el.value = v; };
+  set("theme-accent", t.accent);
+  set("theme-accent-hex", t.accent);
+  set("theme-bg", t.bg);
+  set("theme-bg-hex", t.bg);
+  set("theme-base", t.base);
+  set("theme-font", t.fontKey);
+}
+
+function openThemeEditor() {
+  if (!themeDialog.hidden) return;
+  if (!cmdk.hidden) closeCmdk();
+  if (!help.hidden) closeHelp();
+  buildThemeEditor();
+  syncThemeEditor();
+  themeLastFocus = document.activeElement;
+  themeDialog.hidden = false;
+  requestAnimationFrame(() => $("theme-close").focus());
+}
+
+function closeThemeEditor() {
+  if (themeDialog.hidden) return;
+  themeDialog.hidden = true;
+  themeLastFocus?.focus?.();
 }
 
 function reportError(message) {
@@ -1410,6 +1662,24 @@ help.addEventListener("keydown", (e) => {
   }
 });
 
+// Theme editor dialog wiring: close button, backdrop click, Esc + focus trap.
+$("theme-close").addEventListener("click", closeThemeEditor);
+themeDialog.querySelector(".theme-backdrop").addEventListener("click", closeThemeEditor);
+themeDialog.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    e.preventDefault();
+    closeThemeEditor();
+  } else if (e.key === "Tab") {
+    const focusable = themeDialog.querySelectorAll(
+      "button, a[href], select, input, [tabindex]:not([tabindex='-1'])");
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  }
+});
+
 /* ---------------- shape / snippet palette ---------------- */
 
 // Each snippet is inserted at the caret on its own line(s). `$` marks where
@@ -1863,7 +2133,33 @@ function download(filename, blob) {
 
 function exportSvg() {
   if (!lastGoodSvg) return;
-  download("diagram.svg", new Blob([lastGoodSvg], { type: "image/svg+xml" }));
+  download("diagram.svg", new Blob([themedSvg(lastGoodSvg)], { type: "image/svg+xml" }));
+}
+
+// Bake the active theme into an SVG string so a shared/exported diagram keeps
+// its brand look: override the root font-family, repaint the full-bleed
+// background rect with the theme background, and stamp the theme onto the root
+// as `data-layra-theme` so the playground can restore it on import.
+function themedSvg(svgText) {
+  const t = resolveTheme();
+  const doc = svgParser.parseFromString(svgText, "image/svg+xml");
+  const svg = doc.documentElement;
+  if (svg.nodeName !== "svg") return svgText; // parse failure: leave untouched
+  svg.setAttribute("font-family", t.font);
+  svg.setAttribute("data-layra-theme",
+    JSON.stringify({ id: t.id, base: t.base, accent: t.accent, font: t.fontKey, bg: t.bg }));
+  // The engine emits one full-bleed background rect (matching the viewBox) as
+  // the first <rect>. Repaint it so brand themes export their background.
+  const vb = svg.viewBox.baseVal;
+  for (const rect of svg.querySelectorAll("rect")) {
+    const w = parseFloat(rect.getAttribute("width"));
+    const h = parseFloat(rect.getAttribute("height"));
+    if (vb && Math.abs(w - vb.width) < 1.5 && Math.abs(h - vb.height) < 1.5) {
+      rect.setAttribute("fill", t.bg);
+      break;
+    }
+  }
+  return new XMLSerializer().serializeToString(svg);
 }
 
 // Rasterize the current SVG to a canvas at the given scale, then hand the
@@ -1874,7 +2170,7 @@ function rasterizePng(scale, onBlob) {
   if (!svgEl) return;
   const w = Math.max(1, Math.round(svgEl.viewBox.baseVal.width * scale));
   const h = Math.max(1, Math.round(svgEl.viewBox.baseVal.height * scale));
-  let svgText = lastGoodSvg;
+  let svgText = themedSvg(lastGoodSvg);
   if (!/<svg[^>]*\swidth=/.test(svgText)) {
     svgText = svgText.replace("<svg", `<svg width="${w / scale}" height="${h / scale}"`);
   }
@@ -2063,6 +2359,7 @@ const COMMANDS = [
   { id: "export-png-4", title: "Export PNG · 4×", icon: "▤", run: () => exportPng(4) },
   { id: "copy-png", title: "Copy PNG to clipboard", icon: "⧉", run: () => copyPngToClipboard(2) },
   { id: "toggle-theme", title: "Toggle dark mode", hint: "D", icon: "◐", run: () => toggleTheme() },
+  { id: "theme-editor", title: "Theme & brand…", desc: "Presets + custom accent / font / background", icon: "🎨", run: () => openThemeEditor() },
   { id: "toggle-animate", title: "Animate edges", desc: "March the dashes on edges", hint: "A", icon: "⇝", run: () => toggleAnimateEdges() },
   { id: "examples", title: "Open examples gallery", icon: "✦", run: () => openGallery() },
   { id: "help", title: "Help & keyboard shortcuts", hint: "?", icon: "?", run: () => openHelp() },
@@ -2284,7 +2581,7 @@ async function main() {
     else updateMinimapView();
   });
 
-  $("btn-theme").addEventListener("click", toggleTheme);
+  $("btn-theme").addEventListener("click", openThemeEditor);
   $("btn-animate").addEventListener("click", toggleAnimateEdges);
   $("btn-share").addEventListener("click", shareLink);
   setupExportMenu();
@@ -2329,7 +2626,7 @@ async function main() {
     if (e.key === "+" || e.key === "=") smoothZoom(...center, 1.25);
     else if (e.key === "-") smoothZoom(...center, 1 / 1.25);
     else if (e.key === "0") fitToView(true);
-    else if (e.key === "d" || e.key === "D") $("btn-theme").click();
+    else if (e.key === "d" || e.key === "D") toggleTheme();
     else if (e.key === "a" || e.key === "A") $("btn-animate").click();
     else if (e.key === "?") { e.preventDefault(); openHelp(); }
     // Arrow-key panning when the canvas itself is focused (keyboard a11y).

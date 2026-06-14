@@ -304,7 +304,11 @@ fn write_edge(svg: &mut String, edge: &layra_core::Edge, theme: &Theme) {
             r#" marker-end="url(#arrow)" marker-start="url(#arrow)""#.to_string()
         }
         EdgeKind::Open => String::new(),
-        EdgeKind::Triangle => r#" marker-end="url(#triangle)""#.to_string(),
+        // UML generalization: the hollow triangle sits at the PARENT, which is
+        // the edge source (ranked on the upper layer), so the apex points UP
+        // to the base class. `auto-start-reverse` flips the marker so the
+        // triangle tip touches the source node.
+        EdgeKind::Triangle => r#" marker-start="url(#triangle)""#.to_string(),
         EdgeKind::DiamondFilled => r#" marker-start="url(#diamond-filled)""#.to_string(),
         EdgeKind::DiamondOpen => r#" marker-start="url(#diamond-open)""#.to_string(),
     };

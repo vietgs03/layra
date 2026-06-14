@@ -113,28 +113,36 @@ impl ClassParser {
 
     /// `A "1" <|-- "many" B : label`
     fn try_relationship(&mut self, line: &str) -> Option<()> {
-        // Operators, longest first. (kind, style, reverse) — reverse=true
-        // means the marker belongs at the LHS (Mermaid points base at LHS).
+        // Operators, longest first. (kind, style, lhs_is_source).
+        //
+        // `lhs_is_source` decides edge orientation so layout ranks the right
+        // class on top (Sugiyama puts the source on the upper layer):
+        // - UML generalization/containment markers (triangle, diamond) sit at
+        //   the PARENT/WHOLE side; that side becomes the *source* so the
+        //   parent ranks ABOVE the child (UML draws parent on top, child
+        //   below). The renderer draws those markers at the source endpoint.
+        // - Plain arrows keep their natural source -> target flow; the arrow
+        //   marker sits at the target.
         const OPS: &[(&str, EdgeKind, EdgeStyle, bool)] = &[
             ("<|--", EdgeKind::Triangle, EdgeStyle::Solid, true),
             ("--|>", EdgeKind::Triangle, EdgeStyle::Solid, false),
             ("<|..", EdgeKind::Triangle, EdgeStyle::Dashed, true),
             ("..|>", EdgeKind::Triangle, EdgeStyle::Dashed, false),
-            ("*--", EdgeKind::DiamondFilled, EdgeStyle::Solid, false),
-            ("--*", EdgeKind::DiamondFilled, EdgeStyle::Solid, true),
-            ("o--", EdgeKind::DiamondOpen, EdgeStyle::Solid, false),
-            ("--o", EdgeKind::DiamondOpen, EdgeStyle::Solid, true),
-            ("-->", EdgeKind::Arrow, EdgeStyle::Solid, false),
-            ("<--", EdgeKind::Arrow, EdgeStyle::Solid, true),
-            ("..>", EdgeKind::Arrow, EdgeStyle::Dashed, false),
-            ("<..", EdgeKind::Arrow, EdgeStyle::Dashed, true),
-            ("--", EdgeKind::Open, EdgeStyle::Solid, false),
-            ("..", EdgeKind::Open, EdgeStyle::Dashed, false),
+            ("*--", EdgeKind::DiamondFilled, EdgeStyle::Solid, true),
+            ("--*", EdgeKind::DiamondFilled, EdgeStyle::Solid, false),
+            ("o--", EdgeKind::DiamondOpen, EdgeStyle::Solid, true),
+            ("--o", EdgeKind::DiamondOpen, EdgeStyle::Solid, false),
+            ("-->", EdgeKind::Arrow, EdgeStyle::Solid, true),
+            ("<--", EdgeKind::Arrow, EdgeStyle::Solid, false),
+            ("..>", EdgeKind::Arrow, EdgeStyle::Dashed, true),
+            ("<..", EdgeKind::Arrow, EdgeStyle::Dashed, false),
+            ("--", EdgeKind::Open, EdgeStyle::Solid, true),
+            ("..", EdgeKind::Open, EdgeStyle::Dashed, true),
         ];
 
-        let (pos, op, kind, style, reverse) = OPS
+        let (pos, op, kind, style, lhs_is_source) = OPS
             .iter()
-            .filter_map(|&(op, k, s, rev)| line.find(op).map(|p| (p, op, k, s, rev)))
+            .filter_map(|&(op, k, s, lhs)| line.find(op).map(|p| (p, op, k, s, lhs)))
             .min_by_key(|&(p, op, ..)| (p, std::cmp::Reverse(op.len())))?;
 
         let (lhs_raw, rest) = (line[..pos].trim(), line[pos + op.len()..].trim());
@@ -152,11 +160,12 @@ impl ClassParser {
 
         let a = self.intern(&lhs);
         let b = self.intern(&rhs);
-        // Marker semantics: triangle/diamond sit at the *base* class side.
-        let (source, target, end_labels) = if reverse {
-            (b, a, rcard.zip_or(lcard))
-        } else {
+        // Orient so the parent/whole (or arrow source) is the edge source.
+        // End cardinalities follow the chosen (source, target) order.
+        let (source, target, end_labels) = if lhs_is_source {
             (a, b, lcard.zip_or(rcard))
+        } else {
+            (b, a, rcard.zip_or(lcard))
         };
 
         self.graph.add_edge(Edge {
@@ -282,10 +291,27 @@ mod tests {
         assert_eq!(animal.sections[0], "+String name");
         assert_eq!(animal.sections[1], "+eat()");
 
-        // Inheritance: triangle at Animal (the base) => edge Dog -> Animal.
+        // L13: inheritance ranks PARENT above CHILD. The triangle (hollow
+        // generalization arrow) points UP to the base, so the base class is
+        // the edge *source* (ranked on the upper layer by the Sugiyama
+        // longest-path layering) and the child is the target.
         let e = &g.edges[0];
         assert_eq!(e.kind, EdgeKind::Triangle);
-        assert_eq!(g.node(e.target).name, "Animal");
+        assert_eq!(g.node(e.source).name, "Animal", "parent is the source");
+        assert_eq!(g.node(e.target).name, "Dog", "child is the target");
+    }
+
+    #[test]
+    fn inheritance_direction_is_consistent_both_ways() {
+        // `A <|-- B` and `B --|> A` mean the same thing (B extends A); both
+        // must put the parent A as the source so layout ranks it on top.
+        let g1 = parse_src("Animal <|-- Dog");
+        assert_eq!(g1.node(g1.edges[0].source).name, "Animal");
+        assert_eq!(g1.node(g1.edges[0].target).name, "Dog");
+
+        let g2 = parse_src("Dog --|> Animal");
+        assert_eq!(g2.node(g2.edges[0].source).name, "Animal");
+        assert_eq!(g2.node(g2.edges[0].target).name, "Dog");
     }
 
     #[test]

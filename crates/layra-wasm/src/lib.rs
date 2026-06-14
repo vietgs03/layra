@@ -189,4 +189,49 @@ mod tests {
         let err = render_svg("flowchart LR\nend", false).unwrap_err();
         assert!(err.contains("line 2"), "got: {err}");
     }
+
+    /// L13: class-diagram inheritance must rank the PARENT above the CHILD.
+    /// `Animal <|-- Dog` (Dog extends Animal) must lay Animal out on the
+    /// upper layer and the hollow generalization triangle must point UP to
+    /// the parent (rendered as a `marker-start` at the source = parent).
+    #[test]
+    fn class_inheritance_parent_above_child() {
+        use layra_core::Document;
+        let src = "classDiagram\n    Animal <|-- Dog\n    Animal <|-- Cat";
+        let (doc, warnings) = layra_parser::parse_document_lenient(src);
+        assert!(warnings.is_empty(), "warnings: {warnings:?}");
+        let Document::Graph(mut g) = doc else {
+            panic!("class diagram should parse to a graph");
+        };
+        layra_text::measure_graph(&mut g, &layra_text::TextOptions::default());
+        layra_layout::layout(&mut g, &layra_layout::LayoutOptions::default());
+
+        let animal = g.node(g.node_by_name("Animal").unwrap()).rect;
+        let dog = g.node(g.node_by_name("Dog").unwrap()).rect;
+        let cat = g.node(g.node_by_name("Cat").unwrap()).rect;
+        assert!(
+            animal.y < dog.y,
+            "parent Animal (y={}) must be above child Dog (y={})",
+            animal.y,
+            dog.y
+        );
+        assert!(
+            animal.y < cat.y,
+            "parent Animal (y={}) must be above child Cat (y={})",
+            animal.y,
+            cat.y
+        );
+
+        // And the rendered triangle is a marker-start so its apex points up
+        // to the parent, never a downward marker-end.
+        let svg = render_svg(src, false).unwrap();
+        assert!(
+            svg.contains(r##"marker-start="url(#triangle)""##),
+            "generalization triangle must sit at the parent (marker-start)"
+        );
+        assert!(
+            !svg.contains(r##"marker-end="url(#triangle)""##),
+            "triangle must not point down via marker-end"
+        );
+    }
 }

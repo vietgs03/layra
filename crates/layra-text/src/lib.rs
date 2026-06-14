@@ -120,6 +120,42 @@ pub fn measure_line(text: &str, font_size: f32) -> f32 {
     text.chars().map(char_em).sum::<f32>() * font_size
 }
 
+/// Monospace advance (em) used for compartment member rows. The renderer
+/// draws those rows with `font-family: ui-monospace, 'SF Mono', Menlo,
+/// monospace`; every glyph in such a face advances a fixed width. We take a
+/// safe upper bound over the common system monospaces (SF Mono / Menlo are
+/// ~0.602em) so a measured box never under-shoots the drawn text.
+pub const MONO_EM: f32 = 0.62;
+
+/// Measure a single monospace line at `font_size` (fixed advance per char).
+/// Used for UML/ER compartment rows so wide member signatures like
+/// `+eat(food: String) boolean` don't overflow their box.
+pub fn measure_line_mono(text: &str, font_size: f32) -> f32 {
+    text.chars().count() as f32 * MONO_EM * font_size
+}
+
+/// Geometry of a compartmented node (UML class / ER entity), shared by the
+/// text-measure stage and the SVG renderer so a box is always sized to the
+/// text it will actually draw. Keeping these in one place is what guarantees
+/// `width == text_width + 2*PAD_X` for every member row.
+pub mod compartment {
+    /// Horizontal padding inside each compartment, per side.
+    pub const PAD_X: f32 = 10.0;
+    /// Height of the bold title strip.
+    pub const TITLE_H: f32 = 30.0;
+    /// Height of each member row.
+    pub const LINE_H: f32 = 17.0;
+    /// Vertical gap after each section block.
+    pub const SECTION_GAP: f32 = 6.0;
+    /// Title font size (drawn bold and centered).
+    pub const TITLE_FONT: f32 = 13.5;
+    /// Member-row font size (drawn monospace, left-aligned).
+    pub const MEMBER_FONT: f32 = 12.0;
+    /// Bold weighting: a bold title advances a few percent wider than the
+    /// regular metrics table predicts, so pad the measured title slightly.
+    pub const TITLE_BOLD_FACTOR: f32 = 1.06;
+}
+
 /// Measure a (possibly multi-line) label. Lines split on `\n`.
 pub fn measure_label(label: &str, opts: &TextOptions) -> Size {
     let mut width = 0.0f32;
@@ -161,17 +197,23 @@ pub fn measure_graph(graph: &mut Graph, opts: &TextOptions) {
     for node in &mut graph.nodes {
         // Compartmented node (UML class / ER entity): title strip + one
         // block per section; width fits the longest line anywhere.
+        //
+        // Member rows render in a MONOSPACE face, so they must be measured
+        // with the fixed monospace advance (not the proportional table) or
+        // wide signatures like `+eat(food: String) boolean` overflow. The
+        // box width is exactly `longest_line + 2*PAD_X` for every row, using
+        // the geometry constants shared with the renderer.
         if !node.sections.is_empty() {
-            const TITLE_H: f32 = 30.0;
-            const LINE_H: f32 = 17.0;
-            let mut w = measure_line(&node.label, opts.font_size) + 28.0;
+            use compartment::*;
+            let mut w =
+                measure_line(&node.label, TITLE_FONT) * TITLE_BOLD_FACTOR + 2.0 * PAD_X + 8.0;
             let mut h = TITLE_H;
             for section in &node.sections {
                 for line in section.split('\n') {
-                    w = w.max(measure_line(line, 12.0) + 24.0);
+                    w = w.max(measure_line_mono(line, MEMBER_FONT) + 2.0 * PAD_X);
                     h += LINE_H;
                 }
-                h += 6.0;
+                h += SECTION_GAP;
             }
             node.size = Size::new(w.max(110.0).ceil(), h.ceil());
             continue;
@@ -217,5 +259,38 @@ mod tests {
         let two = measure_label("hello\nworld", &opts);
         assert!(two.height > one.height);
         assert!(two.width < one.width);
+    }
+
+    /// L14: a compartmented (UML class) node must be wide enough for its
+    /// widest MONOSPACE member row. The classic regression was measuring
+    /// member rows with the proportional table while the renderer drew them
+    /// monospaced, so wide signatures overflowed.
+    #[test]
+    fn class_node_fits_widest_monospace_row() {
+        use layra_core::{Direction, Node};
+        let mut g = Graph::new(Direction::TopBottom);
+        let mut n = Node::new("Animal", "Animal");
+        n.sections = vec!["+String name\n+makeSound() void\n+eat(food: String) boolean".into()];
+        g.add_node(n);
+        measure_graph(&mut g, &TextOptions::default());
+
+        let r_w = g.nodes[0].size.width;
+        // The widest row, measured in the SAME monospace metric the renderer
+        // uses, plus padding on both sides, must fit inside the box.
+        let widest = "+eat(food: String) boolean";
+        let needed = measure_line_mono(widest, compartment::MEMBER_FONT) + 2.0 * compartment::PAD_X;
+        assert!(
+            r_w >= needed,
+            "class box {r_w} too narrow for monospace row needing {needed}"
+        );
+    }
+
+    #[test]
+    fn monospace_measures_wider_than_proportional_for_narrow_chars() {
+        // Narrow glyphs (i, l, |) advance their true narrow width in the
+        // proportional table but a full monospace cell in a mono face, so the
+        // monospace measure must be the larger of the two for such strings.
+        let s = "illillillill";
+        assert!(measure_line_mono(s, 12.0) > measure_line(s, 12.0));
     }
 }

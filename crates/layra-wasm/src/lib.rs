@@ -234,4 +234,80 @@ mod tests {
             "triangle must not point down via marker-end"
         );
     }
+
+    /// L14: text must never overflow its box. Reproduce the reported case
+    /// (`+makeSound() void` and a wider signature spilling out of a class
+    /// member row) and assert every member row + the title fit inside the
+    /// node rect, using the same monospace geometry the renderer draws with.
+    #[test]
+    fn class_member_rows_fit_inside_box() {
+        use layra_core::Document;
+        use layra_text::compartment::{MEMBER_FONT, PAD_X, TITLE_FONT};
+        let src = "classDiagram\n    class Animal {\n      +String name\n      +makeSound() void\n      +eat(food: String) boolean\n      +describeYourselfInDetail() String\n    }";
+        let (doc, warnings) = layra_parser::parse_document_lenient(src);
+        assert!(warnings.is_empty(), "warnings: {warnings:?}");
+        let Document::Graph(mut g) = doc else {
+            panic!("class diagram should parse to a graph");
+        };
+        layra_text::measure_graph(&mut g, &layra_text::TextOptions::default());
+        layra_layout::layout(&mut g, &layra_layout::LayoutOptions::default());
+
+        let n = g.node(g.node_by_name("Animal").unwrap());
+        let r = n.rect;
+        // Title is centered and bold: its half-width must fit within the box.
+        let title_half = layra_text::measure_line(&n.label, TITLE_FONT) / 2.0;
+        assert!(
+            r.center().x - title_half >= r.x - 0.5 && r.center().x + title_half <= r.right() + 0.5,
+            "title '{}' overflows box (half={title_half}, rect={r:?})",
+            n.label
+        );
+        // Every monospace member row, drawn left-aligned at x + PAD_X, must
+        // end before the right edge of the box.
+        for section in &n.sections {
+            for line in section.split('\n') {
+                let extent = r.x + PAD_X + layra_text::measure_line_mono(line, MEMBER_FONT);
+                assert!(
+                    extent <= r.right() + 0.5,
+                    "member row '{line}' overflows: extent={extent:.1} > right={:.1}",
+                    r.right()
+                );
+            }
+        }
+    }
+
+    /// L14: edge-label chips must fully cover their text. The old chip width
+    /// used `byte_len * 7`, which under-measures wide glyphs (W/m/@), letting
+    /// the text spill out of its background pill. The chip is now sized from
+    /// the measured advance, so the rendered chip width always covers the
+    /// rendered text width.
+    #[test]
+    fn edge_label_chip_covers_text() {
+        use layra_core::Document;
+        // A label of wide glyphs: byte_len*7 = 82px would under-measure the
+        // ~114px of drawn text, clipping it under the old formula.
+        let src = "flowchart LR\n  A -->|WWWWWWWWWW| B";
+        let (doc, _) = layra_parser::parse_document_lenient(src);
+        let Document::Graph(mut g) = doc else {
+            panic!("flowchart should parse to a graph");
+        };
+        layra_text::measure_graph(&mut g, &layra_text::TextOptions::default());
+        layra_layout::layout(&mut g, &layra_layout::LayoutOptions::default());
+        layra_router::route(&mut g);
+        let svg = render_svg(src, false).unwrap();
+
+        let label = g.edges[0].label.as_ref().unwrap();
+        let text_w = layra_text::measure_line(label, 12.0);
+        // Find the chip rect width the renderer emitted (width="..." right
+        // before the label text). It must be at least the measured text width.
+        let chip_w = svg
+            .split("width=\"")
+            .filter_map(|s| s.split('"').next())
+            .filter_map(|s| s.parse::<f32>().ok())
+            .find(|&w| (w - (text_w + 12.0)).abs() < 1.0)
+            .unwrap_or(0.0);
+        assert!(
+            chip_w >= text_w,
+            "chip width {chip_w} must cover wide label text {text_w}"
+        );
+    }
 }

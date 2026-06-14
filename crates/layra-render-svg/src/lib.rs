@@ -352,7 +352,10 @@ fn write_edge(svg: &mut String, edge: &layra_core::Edge, theme: &Theme) {
     }
 
     if let (Some(label), Some(pos)) = (&edge.label, edge.label_pos) {
-        let w = label.len() as f32 * 7.0 + 12.0;
+        // Size the label chip to the measured text (not byte length) so the
+        // background pill always fully covers the glyphs, plus a little
+        // horizontal breathing room on each side.
+        let w = layra_text::measure_line(label, 12.0) + 12.0;
         let _ = write!(
             svg,
             r#"<rect x="{:.1}" y="{:.1}" width="{w:.1}" height="20" rx="4" fill="{}" opacity="0.92"/><text x="{:.1}" y="{:.1}" font-size="12" fill="{}" text-anchor="middle" dominant-baseline="central">{}</text>"#,
@@ -442,17 +445,17 @@ fn write_node(
 
 /// UML-class-style node: bold title strip, horizontal separators, and
 /// left-aligned monospaced compartment lines. The text-measure stage
-/// already sized `node.rect` to fit (see measure_graph's sections branch).
+/// already sized `node.rect` to fit (see measure_graph's sections branch),
+/// using the same geometry constants from `layra_text::compartment` so the
+/// drawn member rows always fit inside the box.
 fn write_compartments(svg: &mut String, node: &layra_core::Node, theme: &Theme) {
+    use layra_text::compartment::{LINE_H, MEMBER_FONT, PAD_X, SECTION_GAP, TITLE_FONT, TITLE_H};
     let r = node.rect;
-    const TITLE_H: f32 = 30.0;
-    const LINE_H: f32 = 17.0;
-    const PAD_X: f32 = 10.0;
 
     // Title strip.
     let _ = write!(
         svg,
-        r#"<text x="{:.1}" y="{:.1}" font-size="13.5" font-weight="700" fill="{}" text-anchor="middle" dominant-baseline="central">{}</text>"#,
+        r#"<text x="{:.1}" y="{:.1}" font-size="{TITLE_FONT}" font-weight="700" fill="{}" text-anchor="middle" dominant-baseline="central">{}</text>"#,
         r.center().x,
         r.y + TITLE_H / 2.0,
         theme.text,
@@ -473,14 +476,14 @@ fn write_compartments(svg: &mut String, node: &layra_core::Node, theme: &Theme) 
             y += LINE_H;
             let _ = write!(
                 svg,
-                r#"<text x="{:.1}" y="{:.1}" font-size="12" font-family="ui-monospace, 'SF Mono', Menlo, monospace" fill="{}" dominant-baseline="central">{}</text>"#,
+                r#"<text x="{:.1}" y="{:.1}" font-size="{MEMBER_FONT}" font-family="ui-monospace, 'SF Mono', Menlo, monospace" fill="{}" dominant-baseline="central">{}</text>"#,
                 r.x + PAD_X,
                 y - LINE_H / 2.0 + 2.0,
                 theme.edge_label,
                 escape(line)
             );
         }
-        y += 6.0;
+        y += SECTION_GAP;
     }
 }
 
